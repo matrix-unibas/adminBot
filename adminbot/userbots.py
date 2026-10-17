@@ -5,6 +5,7 @@ could read the admin bot's server-admin token. is_separate_from() guards against
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -35,6 +36,10 @@ log = logging.getLogger("maubot.adminbot.userbots")
 PLUGIN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,127}$")
 BOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 OWN_PLUGIN_ID = "ch.unibas.dmi.marvin.adminbot"
+VERIFY_ATTEMPTS = 5
+VERIFY_RETRY_SECONDS = 2
+# maubot trust states (mautrix TrustState) that count as "verified by its owner".
+VERIFIED_TRUST_STATES = {"cross-signed-tofu", "cross-signed-trusted", "verified"}
 
 
 @dataclass
@@ -199,6 +204,20 @@ class UserbotsClient:
             await self.request("PUT", f"/client/{user_id}", json=body)
         else:
             await self.request("POST", "/client/new", json=body)
+
+    async def generate_recovery_key(self, user_id: UserID) -> str | None:
+        """New cross-signing keys, signs the client's device. None if the account has keys already."""
+        try:
+            data = await self.request("POST", f"/client/{user_id}/generate_recovery_key")
+        except UserbotsError as e:
+            if e.params.get("status") == 409:  # client_has_keys
+                return None
+            raise
+        return data["recovery_key"]
+
+    async def verify(self, user_id: UserID, recovery_key: str) -> None:
+        """Sign the client's device with the cross-signing keys behind an existing recovery key."""
+        await self.request("POST", f"/client/{user_id}/verify", json={"recovery_key": recovery_key})
 
     async def delete_client(self, user_id: UserID) -> None:
         await self.request("DELETE", f"/client/{user_id}", allow_404=True)
@@ -367,6 +386,7 @@ class BotManager:
         await self.bot.store.set_plugin_owner(request.plugin_id, request.owner)
         await self.client.save_client(user_id, self.cfg["user_bots.homeserver_url"], access_token, device_id,
                                       displayname)
+        verified = await self.cross_sign(user_id)
         instance_id = self.instance_id(request.owner, request.name)
         await self.client.put_instance(instance_id, type=request.plugin_id, primary_user=user_id,
                                        enabled=True, started=True)
@@ -375,8 +395,38 @@ class BotManager:
             user_id=user_id, sha256=request.sha256, state="running",
         ))
         room_id = await self.bot.ops.open_dm(request.owner)
-        await self.bot.ops.send(room_id, t("msg.bot_ready", name=request.name, user_id=user_id,
-                                           plugin_id=request.plugin_id))
+        text = t("msg.bot_ready", name=request.name, user_id=user_id, plugin_id=request.plugin_id)
+        if not verified:
+            text += "\n\n" + t("msg.bot_unverified")
+        await self.bot.ops.send(room_id, text)
+
+    async def cross_sign(self, user_id: UserID) -> bool:
+        """Self-verify the bot's new device, so Element shows it as verified by its owner and clients
+        that only share keys with cross-signed devices (MSC4153) still send it room keys.
+        A fresh account gets new keys; the recovery key is kept to sign the devices of a later
+        re-login (reactivation, interrupted run). Failure doesn't stop provisioning."""
+        try:
+            for attempt in range(VERIFY_ATTEMPTS):
+                try:
+                    key = await self.client.generate_recovery_key(user_id)
+                    if key is None:
+                        stored = await self.bot.store.get_bot_recovery_key(user_id)
+                        if stored is None:
+                            raise UserbotsError("err.bot_no_recovery_key")
+                        await self.client.verify(user_id, stored)
+                    else:
+                        await self.bot.store.set_bot_recovery_key(user_id, key)
+                    return True
+                except UserbotsError as e:
+                    # The client uploads its device keys while starting; maubot refuses until then.
+                    if "must be shared" not in str(e.params.get("detail", "")) or attempt == VERIFY_ATTEMPTS - 1:
+                        raise
+                    await asyncio.sleep(VERIFY_RETRY_SECONDS)
+        except Exception as e:
+            log.warning(f"Couldn't cross-sign {user_id}: {e}")
+            detail = e.params.get("detail", str(e)) if isinstance(e, UserbotsError) else str(e)
+            await self.bot.audit.post(t("msg.bot_unverified_audit", user_id=user_id, detail=detail))
+        return False
 
     async def _provision_update(self, request: BotRequest) -> None:
         bot = await self.bot.store.get_user_bot(request.owner, request.name)
@@ -419,11 +469,13 @@ class BotManager:
         bot = await self.get(owner, name)
         instance = await self.client.get_instance(bot.instance_id) or {}
         plugin = await self.client.get_plugin(bot.plugin_id) or {}
+        client = await self.client.get_client(bot.user_id) or {}
         rooms = await self.bot.synapse.joined_room_count(bot.user_id)
         return {
             "name": bot.name, "user_id": bot.user_id, "plugin_id": bot.plugin_id,
             "version": plugin.get("version", "?"), "started": bool(instance.get("started")),
             "enabled": bool(instance.get("enabled")), "rooms": rooms,
+            "verified": client.get("trust_state") in VERIFIED_TRUST_STATES,
         }
 
     async def set_started(self, owner: UserID, name: str, started: bool) -> None:

@@ -161,3 +161,15 @@ async def upgrade_v1(conn: Connection, scheme: Scheme) -> None:
             PRIMARY KEY (owner, name)
         )"""
     )
+
+
+@upgrade_table.register(description="Recovery keys of professor bots")
+async def upgrade_v2(conn: Connection, scheme: Scheme) -> None:
+    # Keyed by account, not by user_bot row: the key has to survive !bot delete, because a
+    # reactivated account keeps its cross-signing keys on the server (plan §10).
+    await conn.execute(
+        """CREATE TABLE bot_recovery_key (
+            user_id      TEXT PRIMARY KEY,
+            recovery_key TEXT NOT NULL
+        )"""
+    )

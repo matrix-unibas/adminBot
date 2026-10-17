@@ -583,3 +583,15 @@ class Store:
     async def instances_using_plugin(self, plugin_id: str) -> int:
         q = "SELECT COUNT(*) FROM user_bot WHERE plugin_id=$1 AND state<>'deleted'"
         return await self.db.fetchval(q, plugin_id)
+
+    # --- bot recovery keys ---------------------------------------------------------------------
+
+    async def get_bot_recovery_key(self, user_id: UserID) -> str | None:
+        return await self.db.fetchval("SELECT recovery_key FROM bot_recovery_key WHERE user_id=$1", user_id)
+
+    async def set_bot_recovery_key(self, user_id: UserID, recovery_key: str) -> None:
+        q = (
+            "INSERT INTO bot_recovery_key (user_id, recovery_key) VALUES ($1, $2) "
+            "ON CONFLICT (user_id) DO UPDATE SET recovery_key=excluded.recovery_key"
+        )
+        await self.db.execute(q, user_id, recovery_key)

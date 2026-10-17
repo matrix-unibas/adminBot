@@ -152,6 +152,7 @@ is cached and renewed on 401:
 \cmd{POST /auth/login} & token for the following calls \\
 \cmd{POST /plugins/upload?allow_override=true} & upload a plugin (after the ownership check) \\
 \cmd{POST /client/new}, \cmd{PUT /client/<id>} & the bot account's client (token, device, autojoin) \\
+\cmd{POST /client/<id>/generate_recovery_key}, \cmd{/verify} & cross-sign the bot's device \\
 \cmd{PUT /instance/<id>} & create, start/stop, change plugin or config \\
 \cmd{GET /clients}, \cmd{GET /instances} & startup guard, kill switch \\
 \cmd{DELETE /instance/<id>}, \cmd{/client/<id>}, \cmd{/plugin/<id>} & deleting a bot \\
@@ -161,3 +162,11 @@ is cached and renewed on 401:
 
 Provisioning runs as a job and is safe to repeat after an interruption: an existing account
 is reset or reactivated, an existing client is updated instead of created.
+
+After creating the client, the job cross-signs the bot's new device:
+\cmd{generate_recovery_key} creates cross-signing keys and signs the device, so Element shows
+the bot as verified by its owner, and clients that only share room keys with cross-signed
+devices still include it. The recovery key is kept in the table \cmd{bot_recovery_key}. If
+the account already has keys (a reactivated bot, an interrupted job), maubot answers
+\cmd{409}, and the job signs the device with \cmd{/verify} and the stored key instead. A
+failure doesn't stop provisioning; the owner gets a note and the audit room the reason.

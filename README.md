@@ -121,6 +121,14 @@ Checklist on the test node, which levels 1–3 can't cover:
 - [ ] The audit room receives the startup checks.
 - [ ] The 🤖 reaction appears right after sending a command, and multi-line replies (`!course info`, `!whoami`) show one item per line in Element.
 - [ ] Professor bots (Phase 8, `user_bots.enabled`): `!bot create` with an `.mbp` → approval in the audit room → the bot answers in the professor's room; `!bot delete` deactivates the account and removes the instance. Full steps: admin-bot-setup.md, section 7.5.
+- [ ] A new professor bot shows as verified in Element (member list → the bot → its session has no red shield), `!bot info` says `Verified: yes`, and the bot answers in an *encrypted* room. After `!bot delete` and `!bot create` with the same name, it is verified again.
+
+### Professor bots and E2EE
+
+Right after creating a bot's maubot client, the provisioning job calls `POST /client/<id>/generate_recovery_key` on the userbots maubot. That creates cross-signing keys for the bot account and signs its device, so Element shows the bot as verified by its owner, and clients that only send room keys to cross-signed devices (MSC4153) still include it.
+- The recovery key is stored in the bot DB (`bot_recovery_key`, keyed by the bot's user ID) and never shown to anyone. It is kept after `!bot delete`: a reactivated account still has its cross-signing keys on the server, so maubot answers `409 client_has_keys`, and the job signs the new device with `POST /client/<id>/verify` and the stored key.
+- If verification fails (crypto not available in userbots, keys created by someone else, ...), the bot is provisioned anyway; the owner gets a note, and the audit room gets the reason. `!bot delete` + `!bot create` tries again.
+- This assumes Synapse accepts the bot's *first* cross-signing key upload without user-interactive auth (MSC3967). Check this once on the test node (checklist above).
 
 ## Releasing
 

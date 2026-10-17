@@ -24,10 +24,11 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to 
 - **Rejected uploads can be re-sent.** If an upload handler raises `ValidationError` (invalid .mbp, taken plugin ID, bad CSV/YAML, no usable rows), the router waits for a corrected file with the same command context (`run_upload` in `commands/base.py`). Nothing has to be retyped. `!bot create` checks name and quota *before* asking for the file.
 - **Line breaks.** `MatrixOps.send` turns single newlines into Markdown hard breaks (`hard_breaks`), because CommonMark renders them as spaces.
 - **Subcommands are listed in definition order** (create, list, info, ...), not alphabetically.
+- **Professor bots are cross-signed** (2026-10-17). After `client/new` the job calls maubot's `generate_recovery_key`, so the bot's device is verified by its owner (Element, MSC4153). The recovery key is stored in `bot_recovery_key` and kept after `!bot delete`; a reactivated account (`409 client_has_keys`) is signed again with `/verify`. A failure only warns (owner + audit room). `!bot info` shows `Verified`.
 - **Handbook.** `handbook/` holds a LaTeX handbook in two versions (professors; technical with architecture, Synapse connection, security). `make` builds both.
 
 **Verified** (2026-10-06; v6 additions 2026-10-16):
-- 95 pytest tests (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks).
+- 102 pytest tests (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks; cross-signing of professor bots).
 - v6 has *not* been run against the local Synapse or the test node yet.
 - Against a real local Synapse 1.157 with the plugin from source (`dev/setup.sh --bots`):
   - course create (rooms, join rules, power levels), TA scoping, refusal outside DMs
@@ -376,15 +377,16 @@ groups: {count: 0, name: "Group {n}"}
    4. Log in to userbots: `POST /_matrix/maubot/v1/auth/login` with the credentials from the plugin config (`user_bots.maubot_url`, `user_bots.username`, `user_bots.password`).
    5. `POST /_matrix/maubot/v1/plugins/upload?allow_override=true`, guarded by the ownership check in step 3.
    6. `POST /_matrix/maubot/v1/client/new` with `{homeserver: "http://synapse:8008", access_token, device_id, autojoin: true, displayname}`.
-   7. `PUT /_matrix/maubot/v1/instance/<owner>-<name>` with `{type: <plugin_id>, primary_user, enabled: true, started: true}`.
+   7. Cross-sign the bot's device: `POST /_matrix/maubot/v1/client/<id>/generate_recovery_key`, and keep the recovery key in `bot_recovery_key`. If the account already has keys (`409`), use `POST .../client/<id>/verify` with the stored key instead. A failure doesn't stop provisioning; the owner and the audit room are told.
+   8. `PUT /_matrix/maubot/v1/instance/<owner>-<name>` with `{type: <plugin_id>, primary_user, enabled: true, started: true}`.
 6. **Report back** with the bot's user ID and the instruction "invite it to your room".
-   - E2EE verification of professor bots is optional and documented, not automated.
+   - The bot is verified by its *own* cross-signing keys. Professors don't verify it themselves.
 
 ### Management commands
 
 Professors (own bots only) and admins:
 - `!bot list`
-- `!bot info <name>`: status, plugin version, rooms joined
+- `!bot info <name>`: status, plugin version, verified or not, rooms joined
 - `!bot update <name>` with an attached `.mbp`: same validation; approval again if the hash changed
 - `!bot config <name>`: returns the instance config YAML; with an attached YAML it updates it (`PUT .../instance/<id>` `config`)
 - `!bot start|stop <name>`
@@ -479,7 +481,7 @@ adminBot/ (repo root; planned as server/admin-bot/)
 Server-side setup (everything outside this repo): `server/docs/admin-bot-setup.md` in `matrix-unibas`. The professor guide is `handbook/` (v6); its technical version covers architecture and security. The admin runbook is still Phase 9.
 
 **DB tables**
-- `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`.
+- `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`, `bot_recovery_key`.
 
 ## 14. Phases
 

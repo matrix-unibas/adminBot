@@ -91,7 +91,8 @@ class BotCommands(CommandGroup):
         usage = t("usage.bot.info")
         owner, name = await self.target(evt, split_args(args, usage=usage), usage)
         info = await self.manager.info(owner, name)
-        await self.reply(evt, "msg.bot_info", **info,
+        verified = t("msg.bot_verified") if info.pop("verified") else t("msg.bot_not_verified")
+        await self.reply(evt, "msg.bot_info", **info, verified=verified,
                          status=t("msg.bot_running") if info["started"] else t("msg.bot_stopped"))
 
     @command("bot", "config", usage="usage.bot.config", role=Role.PROFESSOR, needs=NEEDS)

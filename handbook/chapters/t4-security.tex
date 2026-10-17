@@ -76,6 +76,10 @@ the main maubot, any uploaded plugin could take the admin bot's server-admin tok
         professor bot.
   \item \textbf{Unprivileged accounts.} Bot accounts are normal users with \cmd{user_type: bot},
         named \cmd{@bot.<owner>.<name>}, and not exempt from rate limits unless configured.
+  \item \textbf{Recovery keys.} Each bot's cross-signing recovery key is stored in the admin
+        bot's database, which professor plugins can't reach, and is never shown to anyone.
+        Whoever has it can sign devices as that bot account, so it is treated like the
+        bot's access token: unprivileged, but kept out of logs and replies.
 \end{itemize}
 
 \textbf{Remaining risk:} professor bots share one process with \emph{each other}. A

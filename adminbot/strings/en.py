@@ -360,7 +360,7 @@ Only give the link to the account owner: whoever opens it can take over the acco
     "help.bot.list": """Lists your bots with their account, plugin and state. Bot admins see all professor bots.
 
 **Who:** professors.""",
-    "help.bot.info": """Shows one bot's account, plugin ID and version, whether it is running, and in how many rooms it is.
+    "help.bot.info": """Shows one bot's account, plugin ID and version, whether it is running, whether its device is verified (needed for some encrypted rooms), and in how many rooms it is.
 
 **Example:** `!bot info quiz-bot`
 
@@ -467,6 +467,7 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "err.bot_unknown": "There is no bot called {name}. `!bot list` shows your bots.",
     "err.bot_quota": "You already have {limit} bots, the maximum. Delete one with `!bot delete <name>`, or ask a bot admin for an exception.",
     "err.bot_unchanged": "{name} already runs exactly this file (version {version}). If you changed the code, raise `version:` in maubot.yaml, run `mbc build` again and send the new .mbp.",
+    "err.bot_no_recovery_key": "the account already has cross-signing keys, but I have no recovery key for them",
     "err.bot_request_unknown": "There is no open bot request #{id}. `!admin bots pending` lists the open ones.",
     "err.mbp_invalid": "That is not a usable maubot plugin: {detail}.",
     "err.mbp_dependencies": "The plugin needs Python packages that this server doesn't have: {deps}. Plugins can only use the packages that come with maubot. Remove the dependency from maubot.yaml (and from your code), or ask a bot admin whether it can be added to the server.",
@@ -576,11 +577,15 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "msg.bot_rejected_admin": "Request #{id} rejected. The owner was told.",
     "msg.bot_rejected": "Your bot request **{name}** was rejected by {admin}. Reason: {reason}\nIf you have questions, contact {admin}. Once the problem is fixed you can send `!bot create {name}` again.",
     "msg.bot_ready": "Your bot **{name}** is running as {user_id} (plugin `{plugin_id}`).\n\n**Next steps**\n- Invite {user_id} to a room (room info, then *Invite*); it joins by itself.\n- `!bot info {name}` shows its status, `!bot config {name}` its settings.",
+    "msg.bot_unverified": "Note: I couldn't verify the bot's device. It works, but Element marks it as unverified, and in encrypted rooms some clients may not let it read messages. The bot admins were told; you don't need to do anything.",
+    "msg.bot_unverified_audit": "Couldn't cross-sign professor bot {user_id}: {detail}\nThe bot runs, but unverified. `!bot delete` and `!bot create` try again; see README, *Professor bots and E2EE*.",
     "msg.bot_updated": "Bot **{name}** now runs version {version}.",
     "msg.bot_list": "**Bots**\n{bots}",
-    "msg.bot_info": "**{name}** ({user_id})\nPlugin: `{plugin_id}` v{version}\nStatus: {status}\nRooms: {rooms}",
+    "msg.bot_info": "**{name}** ({user_id})\nPlugin: `{plugin_id}` v{version}\nStatus: {status}\nVerified: {verified}\nRooms: {rooms}",
     "msg.bot_running": "running",
     "msg.bot_stopped": "stopped (start it with `!bot start`)",
+    "msg.bot_verified": "yes",
+    "msg.bot_not_verified": "no (Element marks it as unverified; some encrypted rooms may not work. Ask a bot admin.)",
     "msg.bot_started": "Bot **{name}** started.",
     "msg.bot_stopped_now": "Bot **{name}** stopped. It keeps its rooms; `!bot start {name}` starts it again.",
     "msg.bot_config_saved": "Config of **{name}** saved. The bot uses it right away.",
