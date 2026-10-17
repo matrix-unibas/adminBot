@@ -57,7 +57,7 @@ class CourseCommands(CommandGroup):
     def __init__(self, bot: AdminBot) -> None:
         super().__init__(bot)
         bot.jobs.register(JobKind.COURSE_ARCHIVE, self.archive_item, on_finish=self.archive_finish,
-                          audit_action="course.archive")
+                          audit_action="course.archive", done_hint="msg.next.course_archive")
 
     async def load_template(self, evt: MessageEvent, name: str | None) -> templates.Template:
         if not name:
@@ -152,7 +152,7 @@ class CourseCommands(CommandGroup):
         rooms = await self.course_rooms(course)
         if action == "add":
             if user == course.owner:
-                raise ValidationError("err.ta_is_owner")
+                raise ValidationError("err.ta_is_owner", user_id=user, code=course.code)
             if not await self.bot.synapse.user_exists(user):
                 raise NotFound("err.user_not_found", user_id=user)
             await self.bot.store.add_staff(course.code, user, TA)
@@ -222,10 +222,10 @@ class CourseCommands(CommandGroup):
         course = await self.require_course(evt, code, Role.PROFESSOR)
         new_semester = normalize_semester(new_semester)
         if new_semester == course.semester:
-            raise ValidationError("err.same_semester", semester=new_semester)
+            raise ValidationError("err.same_semester", code=course.code, semester=new_semester)
         old_code = f"{course.code}-{course.semester}"
         if await self.bot.store.get_course(old_code):
-            raise ValidationError("err.course_exists", code=old_code)
+            raise ValidationError("err.rollover_exists", code=course.code, old_code=old_code)
         template = await templates.snapshot(self.bot.ops, course.space_id, course.code, course.title,
                                             course.semester)
         staff = await self.bot.store.get_staff(course.code)

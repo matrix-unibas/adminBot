@@ -23,6 +23,17 @@ class Role(str, Enum):
     TA = "ta"  # with a course: TA (or owner) of it; without: staff of any course
 
 
+def forbidden_key(role: Role | None, course: str | None) -> str:
+    """The error text names the role that was missing, so the reply says who may do it."""
+    if role == Role.ADMIN:
+        return "err.forbidden_admin"
+    if role == Role.PROFESSOR:
+        return "err.forbidden_owner" if course else "err.forbidden_professor"
+    if role == Role.TA:
+        return "err.forbidden_staff" if course else "err.forbidden_staff_any"
+    return "err.forbidden"
+
+
 class Authz:
     def __init__(self, store: Store, config: Config) -> None:
         self.store = store
@@ -63,7 +74,7 @@ class Authz:
 
     async def require(self, user_id: UserID, role: Role | None, course: str | None = None) -> None:
         if not await self.has(user_id, role, course):
-            raise Forbidden("err.forbidden")
+            raise Forbidden(forbidden_key(role, course), course=course or "")
 
     async def is_known(self, user_id: UserID) -> bool:
         """Admin, professor or staff of any course. Everyone else is ignored silently."""

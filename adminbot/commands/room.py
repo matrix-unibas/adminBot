@@ -34,7 +34,8 @@ class RoomCommands(CommandGroup):
             [course.owner, *tas], f"{position:03d}",
         )
         await self.bot.audit.log(evt.sender, "room.add", course=course.code, target_count=1)
-        await self.reply(evt, "msg.room_added", name=spec.name, code=course.code, room_id=room_id)
+        await self.reply(evt, "msg.room_added_private" if a.flag("private") else "msg.room_added",
+                         name=spec.name, code=course.code, room_id=room_id)
 
     @command("room", "remove", usage="usage.room.remove", role=Role.PROFESSOR)
     async def remove(self, evt: MessageEvent, args: str) -> None:

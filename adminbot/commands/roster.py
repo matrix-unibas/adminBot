@@ -23,7 +23,8 @@ if TYPE_CHECKING:
 class RosterCommands(CommandGroup):
     def __init__(self, bot: AdminBot) -> None:
         super().__init__(bot)
-        bot.jobs.register(JobKind.ROSTER_REMOVE, self.remove_item, audit_action="roster.remove")
+        bot.jobs.register(JobKind.ROSTER_REMOVE, self.remove_item, audit_action="roster.remove",
+                          done_hint="msg.next.roster_remove")
 
     @command("roster", "sync", usage="usage.roster.sync", role=Role.TA)
     async def sync(self, evt: MessageEvent, args: str) -> None:
@@ -36,7 +37,7 @@ class RosterCommands(CommandGroup):
         if extract_emails(text):
             await self.compare(evt, course, text, context)
         else:
-            await self.with_file(evt, self.on_file, context)
+            await self.with_file(evt, self.on_file, context, "msg.file_emails")
 
     async def on_file(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
         course = await self.require_course(evt, context["code"], Role.TA)
@@ -54,6 +55,8 @@ class RosterCommands(CommandGroup):
             summary += "\n" + t("msg.roster_missing", users=list_preview(diff.to_add), code=course.code)
         if diff.to_remove:
             summary += "\n" + t("msg.roster_extra", users=list_preview(diff.to_remove))
+            if not context["remove"]:
+                summary += "\n" + t("msg.roster_remove_hint", code=course.code)
         if invalid:
             summary += "\n" + t("msg.invalid_entries", entries=list_preview(invalid))
         if context["remove"] and diff.to_remove:

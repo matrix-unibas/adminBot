@@ -1,8 +1,8 @@
-# MARVIN Admin Bot: Implementation Plan (v5)
+# MARVIN Admin Bot: Implementation Plan (v6)
 
-Status: **implemented** (phases 0–8), tested locally, not yet deployed. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented).
-Scope: a new maubot plugin in `server/admin-bot/` (plugin ID `ch.unibas.dmi.marvin.adminbot`). See `README.md` for development and testing.
-Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to apply them is in `server/docs/admin-bot-setup.md`.
+Status: **implemented** (phases 0–8). Phases 0–7 run on production; Phase 8 (professor bots) is being rolled out (2026-10-07). Plugin version 0.2.0 (user feedback, help, handbook; 2026-10-16) is not deployed yet. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help).
+Scope: a new maubot plugin (plugin ID `ch.unibas.dmi.marvin.adminbot`). Planned as `server/admin-bot/`, it now lives in its own repository (`adminBot`); paths below that say `server/admin-bot/` mean the root of that repo. See `README.md` for development and testing.
+Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to apply them is in `server/docs/admin-bot-setup.md` in the `matrix-unibas` repo.
 
 **Implementation notes (v5): where the code differs from the plan below**
 - **Own command router instead of maubot's `@command` decorators.** maubot answers usage help to anyone, in any room, before a handler runs. The bot sits in every course room, so `commands/base.py` routes all messages itself: unknown senders get silence, known users outside a DM get "please DM me".
@@ -16,8 +16,19 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to 
 - **Professor bots:** plugins whose pip dependencies aren't installed in the (shared, pinned) maubot image are rejected up front. Admins' own uploads skip approval. A deleted bot's account is reactivated when its name is used again.
 - **Notifications** (bot approved/rejected, password reset) go to the user's most recent DM with the bot. The router records every DM a command arrives in.
 
-**Verified** (2026-10-06):
-- 87 pytest tests.
+**Changes in v6 (plugin 0.2.0, 2026-10-16): user feedback**
+- **🤖 reaction.** The router reacts to every accepted command (and every upload it processes) before doing any work, so the sender sees at once that the bot has it. Unknown senders and non-DM rooms get no reaction.
+- **Timing log.** Every command logs (INFO, `maubot.adminbot.commands`) how long the message took to reach the bot (`now - origin_server_ts`) and how long the handler took. This separates "Synapse/sync is slow" from "the command is slow" (see README, *Slow replies*).
+- **Help per command.** `!help <command> [<sub>]`, `!<command> help [<sub>]` and `!<command> <sub> --help` show a detailed text (`help.<command>[.<sub>]` in `strings/en.py`: what it does, arguments, example, next steps, who may use it). `!help` groups the overview by topic and points to the detailed help. A test checks that every command has a `help.*` text.
+- **Every reply says what to do next.** Errors name the cause and the fix (e.g. a taken plugin ID comes with a suggested own ID); permission errors name the role that is missing (`authz.forbidden_key`); usage errors link to `!help <command>`; finished jobs end with a next-step hint (`done_hint` in `JobRunner.register`); unknown commands and subcommands in a DM get a "did you mean".
+- **Rejected uploads can be re-sent.** If an upload handler raises `ValidationError` (invalid .mbp, taken plugin ID, bad CSV/YAML, no usable rows), the router waits for a corrected file with the same command context (`run_upload` in `commands/base.py`). Nothing has to be retyped. `!bot create` checks name and quota *before* asking for the file.
+- **Line breaks.** `MatrixOps.send` turns single newlines into Markdown hard breaks (`hard_breaks`), because CommonMark renders them as spaces.
+- **Subcommands are listed in definition order** (create, list, info, ...), not alphabetically.
+- **Handbook.** `handbook/` holds a LaTeX handbook in two versions (professors; technical with architecture, Synapse connection, security). `make` builds both.
+
+**Verified** (2026-10-06; v6 additions 2026-10-16):
+- 95 pytest tests (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks).
+- v6 has *not* been run against the local Synapse or the test node yet.
 - Against a real local Synapse 1.157 with the plugin from source (`dev/setup.sh --bots`):
   - course create (rooms, join rules, power levels), TA scoping, refusal outside DMs
   - invite with CSV, the signup page (CSRF nonce, single use, force-join, threepid)
@@ -60,7 +71,7 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to 
 - Each environment has its own `.env` and its own rendered configs. The plugin hardcodes no server names, URLs or room IDs. Everything comes from the instance config: defaults in `base-config.yaml`, edited per environment in the maubot UI (`https://localhost:8443/_matrix/maubot/` via SSH tunnel, see `server/docs/maubot.md`).
 - Release flow: bump the version in `maubot.yaml` → `mbc build` → upload to the test node (maubot UI or `mbc upload`) → run the checklist → upload the same `.mbp` to production. `*.mbp` is gitignored, so builds stay out of the repo.
 - Allowed changes for this work: files in `server/admin-bot/` plus `.md` files. Compose, nginx, the maubot config template, `.env.example`, `create_env.sh`, `setup.sh` and `backup.sh` are only *documented* (§16) and changed in a separate, reviewed infra PR. §14 shows which phase needs which item.
-- **`.gitignore` traps for the plugin directory:** `*.sql`, `*.db`, `*.sqlite`, `*.log`, `*.tar`, `*.secret` and any `data/` directory are ignored repo-wide. Migrations therefore live in Python (mautrix `UpgradeTable`), not `.sql` files, and no folder may be called `data/`.
+- **`.gitignore` traps for the plugin directory** (written for `server/admin-bot/` inside `matrix-unibas`; the separate repo has its own small `.gitignore`, the conventions stay): `*.sql`, `*.db`, `*.sqlite`, `*.log`, `*.tar`, `*.secret` and any `data/` directory are ignored repo-wide. Migrations therefore live in Python (mautrix `UpgradeTable`), not `.sql` files, and no folder may be called `data/`.
 
 ## 1. Scope
 
@@ -115,7 +126,7 @@ Professor / TA ──DM (E2EE)──► @adminbot (in matrix-maubot) ─┬─ h
 **APIs**
 - Synapse calls go through mautrix's `SynapseAdminPath` and `client.api.request`.
 - maubot management calls use `self.http` (aiohttp) against `<base>/_matrix/maubot/v1/...` (`auth/login`, `plugins/upload`, `client/new`, `instance/{id}`, and so on).
-- The API details were checked against maubot 0.6.0 / mautrix 0.21.1. The compose file uses `maubot:latest`, so pin that tag first (I4). Otherwise these notes can go stale without warning.
+- The API details were checked against maubot 0.6.0 / mautrix 0.21.1. The compose file pins the image through `MAUBOT_IMAGE_TAG` (I4); keep it and `requirements-dev.txt` on the same version, or these notes can go stale without warning.
 
 **Dependencies**
 - No new pip dependencies. The maubot image doesn't install plugin dependencies.
@@ -274,6 +285,8 @@ Decision:
 ## 8. Language
 
 - All user-facing text lives in `adminbot/strings/en.py`, as keyed strings with placeholders. Handlers never contain literal text.
+- Key families: `usage.*` (one line per command, in `!help`), `help.*` (detailed help per command, plus `help.group.*`, `help.area.*`, `help.role.*`), `err.*`, `msg.*`, `web.*`. The help key of a command is derived from its usage key (`usage.course.create` → `help.course.create`).
+- Rule for every reply: say what happened, why, and what the user can do next (which command, whether to repeat it or only re-send a file).
 - German is added later as `strings/de.py` plus a `language:` config key, or per-user preference.
 
 ## 9. Courses, rooms, templates
@@ -433,7 +446,7 @@ Admin only:
 Implemented 2026-10-06. `commands/uploads.py` from the skeleton became part of the router in `commands/base.py`.
 
 ```
-server/admin-bot/
+adminBot/ (repo root; planned as server/admin-bot/)
   claude.md              # this plan
   README.md              # dev setup, the four test levels, build
   maubot.yaml            # id ch.unibas.dmi.marvin.adminbot; config, database (asyncpg), webapp: true
@@ -460,9 +473,10 @@ server/admin-bot/
     web/                 # signup.py (handlers), pages.py (HTML), ratelimit.py
   tests/                 # pytest with maubot's fixtures (maubot[testing])
   dev/                   # setup.sh: local Synapse + Postgres (+ second maubot), standalone config
+  handbook/              # LaTeX handbook: professors' version and technical version, Makefile (v6)
 ```
 
-Server-side setup (everything outside this folder): `server/docs/admin-bot-setup.md`. Professor guide and admin runbook come in Phase 9.
+Server-side setup (everything outside this repo): `server/docs/admin-bot-setup.md` in `matrix-unibas`. The professor guide is `handbook/` (v6); its technical version covers architecture and security. The admin runbook is still Phase 9.
 
 **DB tables**
 - `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`.
@@ -480,7 +494,7 @@ Server-side setup (everything outside this folder): `server/docs/admin-bot-setup
 | 6 | Exercise groups | – | Groups created, assigned, per-group posts delivered (in E2EE rooms) |
 | 7 | Archive & rollover | – | Old course read-only in Archive; new semester with staff carried over |
 | 8 | Professor bots | I7 | `.mbp` upload → approval → bot answers in the professor's room; delete cleans up account + instance |
-| 9 | Professor guide, admin runbook, Journal entry; production transfer checklist | – | A colleague can set it up on the ITS VM from the docs alone |
+| 9 | Professor guide (done: `handbook/`), admin runbook, Journal entry; production transfer checklist | – | A colleague can set it up on the ITS VM from the docs alone |
 
 **Testing** (details in `README.md`)
 1. **Unit tests** for the pure modules and `Store` (SQLite), with pytest on the MacBook.
@@ -504,6 +518,18 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 - That guide keeps changes minimal: I1, I2, I4 and I5 now, I6 by hand, I8 after Phase 3, I7 in Phase 8.
 - I3 (pickle key, `registration_secrets`) is deliberately **deferred**: changing the key breaks existing maubot clients and adds little.
 - I9 is optional.
+
+**Status (2026-10-07):**
+
+| Item | State |
+|---|---|
+| I1 | `limit_req_zone` in `matrix.conf`; check that the `location` block is there too (admin-bot-setup.md §4) |
+| I2, I4, I5 | done |
+| I3 | deferred for the main maubot; `userbots` has its own random pickle key and no `registration_secrets` |
+| I6 | done (Phase 0) |
+| I7 | in the repo, rolling out (admin-bot-setup.md §7) |
+| I8 | open: `enable_registration` is still `true` |
+| I9 | done (`startup.md` updated) |
 
 **I1. Public route for the signup page** (`server/nginx/matrix.conf`)
 - Host nginx sends everything matching `^(/_matrix|…)` to Synapse, so `/_matrix/maubot/...` currently returns a Synapse 404.

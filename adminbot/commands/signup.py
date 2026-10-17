@@ -96,7 +96,7 @@ class SignupCommands(CommandGroup):
         for token in tokens:
             if await self._may_manage(evt.sender, token):
                 return user_id
-        raise Forbidden("err.forbidden")
+        raise Forbidden("err.forbidden_signup", user_id=user_id)
 
     @command("signup", "revoke", usage="usage.signup.revoke", role=Role.TA)
     async def revoke(self, evt: MessageEvent, args: str) -> None:

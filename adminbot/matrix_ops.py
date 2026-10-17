@@ -8,10 +8,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from maubot.matrix import MaubotMatrixClient
+from maubot.matrix import MaubotMatrixClient, parse_formatted
 from mautrix.api import ClientPath, Method
 from mautrix.errors import MatrixRequestError, MNotFound
-from mautrix.types import EventID, EventType, MessageType, RoomCreatePreset, RoomID, UserID
+from mautrix.types import (
+    EventID,
+    EventType,
+    Format,
+    MessageType,
+    RoomCreatePreset,
+    RoomID,
+    TextMessageEventContent,
+    UserID,
+)
 
 TAG_TYPE = "ch.unibas.dmi.marvin.room"
 ENCRYPTION_CONTENT = {"algorithm": "m.megolm.v1.aes-sha2"}
@@ -42,6 +51,22 @@ BASE_EVENT_POWER = {
 def is_dm_members(joined: set[UserID], invited: set[UserID], bot: UserID, sender: UserID) -> bool:
     """Pure DM rule (plan §2): exactly {bot, sender} joined and nobody else invited."""
     return sender != bot and joined == {bot, sender} and not invited
+
+
+def hard_breaks(markdown: str) -> str:
+    """Make every single newline a line break. CommonMark treats it as a space, so 'Owner: x\nTAs: y'
+    would arrive as one line. Fenced code blocks and blank lines (paragraphs) are left alone."""
+    out, fenced = [], False
+    lines = markdown.split("\n")
+    for i, line in enumerate(lines):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+        elif not fenced and line.strip() and i + 1 < len(lines):
+            following = lines[i + 1]
+            if following.strip() and not following.lstrip().startswith("```"):
+                line += "  "
+        out.append(line)
+    return "\n".join(out)
 
 
 def power_content(users: dict[UserID, int], overrides: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -179,8 +204,15 @@ class MatrixOps:
         return room_id
 
     async def send(self, room_id: RoomID, markdown: str, edits: EventID | None = None) -> EventID:
-        """Markdown notice (m.notice: other bots don't react to it)."""
-        return await self.client.send_markdown(room_id, markdown, msgtype=MessageType.NOTICE, edits=edits)
+        """Markdown notice (m.notice: other bots don't react to it). Single newlines become line
+        breaks (hard_breaks); the newline after each <br /> is dropped so clients that keep raw
+        newlines in HTML don't show two."""
+        body, html = await parse_formatted(hard_breaks(markdown), render_markdown=True)
+        content = TextMessageEventContent(msgtype=MessageType.NOTICE, body=body, format=Format.HTML,
+                                          formatted_body=html.replace("<br />\n", "<br />"))
+        if edits:
+            content.set_edit(edits)
+        return await self.client.send_message(room_id, content)
 
     async def send_text(self, room_id: RoomID, markdown: str) -> EventID:
         """Normal message (m.text), for posts written by staff (!groups post)."""

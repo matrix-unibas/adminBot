@@ -1,8 +1,8 @@
 # MARVIN admin bot
 
-maubot plugin `ch.unibas.dmi.marvin.adminbot`. The plan, with the design and its reasoning, is in [claude.md](claude.md). The server-side setup (everything outside this folder) is in [../docs/admin-bot-setup.md](../docs/admin-bot-setup.md).
+maubot plugin `ch.unibas.dmi.marvin.adminbot`. The plan, with the design and its reasoning, is in [claude.md](claude.md). The server-side setup (account, nginx, backups, the second maubot for professor bots) is in the server repo: [matrix-unibas/server/docs/admin-bot-setup.md](https://github.com/matrix-unibas/matrix-unibas/blob/main/server/docs/admin-bot-setup.md).
 
-Professors and TAs talk to `@adminbot` in a direct chat. `!help` lists what the sender may use:
+Professors and TAs talk to `@adminbot` in a direct chat. The bot reacts with 🤖 as soon as it starts on a command. `!help` lists what the sender may use; `!help <command>` (or `!<command> help`, `!<command> <sub> --help`) explains one command with its arguments, an example and the next steps:
 
 | Area | Commands |
 |---|---|
@@ -13,6 +13,9 @@ Professors and TAs talk to `@adminbot` in a direct chat. `!help` lists what the 
 | Own bots | `!bot create / update / list / info / config / start / stop / delete` |
 | Admins | `!admin prof / audit / bots` |
 | Bulk changes | shown as a plan first, run with `!confirm <code>`, dropped with `!cancel` |
+| Help | `!help`, `!help <command> [<sub>]`, `!whoami` |
+
+User documentation: the handbook in [`handbook/`](handbook/) (see [Handbook](#handbook)).
 
 ## Layout
 
@@ -30,9 +33,10 @@ adminbot/
   signups, confirm, jobs,       services
   authz, audit
   db, migrations                SQL (portable SQLite + Postgres)
-  strings/en.py                 every user-facing text
+  strings/en.py                 every user-facing text, incl. the detailed help per command
 tests/                          pytest (uses maubot's own test fixtures)
 dev/                            local Synapse + Postgres (+ optional second maubot) for the MacBook
+handbook/                       LaTeX handbook (professors' and technical version) + Makefile
 ```
 
 ## Testing: four levels, fastest first
@@ -53,7 +57,7 @@ Production gets exactly the `.mbp` that passed level 4.
 Python **3.12** (`.python-version` pins it for uv). maubot's standalone mode (level 3) does not run on 3.14.
 
 ```bash
-cd server/admin-bot
+git clone git@github.com:Noah-Klaholz/adminBot.git && cd adminBot
 uv sync --group dev            # or: python3.12 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
@@ -66,6 +70,7 @@ uv sync --group dev            # or: python3.12 -m venv .venv && .venv/bin/pip i
 - `tests/conftest.py` points maubot's pytest fixtures at this plugin. The `bot` fixture mocks all server calls, and `chat.send("!help", sender=...)` returns the bot's replies.
 - The test DB is SQLite, so the SQL in `db.py` / `migrations.py` must work on SQLite and Postgres.
 - `mautrix.crypto` needs python-olm, which isn't in the dev venv. Import it inside functions only (see `attachments.py`).
+- New commands need a `usage.*` *and* a `help.*` text in `strings/en.py`; `test_every_command_has_detailed_help` fails otherwise. Replies should say what happened, why, and what to do next.
 
 ### Level 3: local dev stack
 
@@ -109,3 +114,37 @@ Checklist on the test node, which levels 1–3 can't cover:
 - [ ] The signup page works through `https://matrix.dmi.unibas.ch/_matrix/maubot/plugin/adminbot/signup` (production) or through the tunnel (test node).
 - [ ] After a restart of maubot, an interrupted job continues.
 - [ ] The audit room receives the startup checks.
+- [ ] The 🤖 reaction appears right after sending a command, and multi-line replies (`!course info`, `!whoami`) show one item per line in Element.
+- [ ] Professor bots (Phase 8, `user_bots.enabled`): `!bot create` with an `.mbp` → approval in the audit room → the bot answers in the professor's room; `!bot delete` deactivates the account and removes the instance. Full steps: admin-bot-setup.md, section 7.5.
+
+## Slow replies
+
+Every command writes one line to the maubot log (logger `maubot.adminbot.commands`, level INFO):
+
+```
+!help from @prof:matrix.dmi.unibas.ch: reached the bot 18734 ms after it was sent, handled in 412 ms
+```
+
+- **"reached the bot" is large** (seconds): the delay is *before* the plugin sees the message: Synapse delivering it through `/sync`, the bot's sync loop, or decrypting it. Our code hasn't run yet. The 🤖 reaction then also arrives late. Check the Synapse logs for slow `/sync` requests of `@adminbot`, the maubot log for `mau.client.crypto` warnings ("Failed to decrypt", key sharing), and the server load. Both containers share the host clock, so the number is reliable.
+- **"handled in" is large**: the command itself is slow. Most commands make a few calls to Synapse (`http://synapse:8008`) and some DB queries; bulk work runs as a job after `!confirm` and doesn't count here.
+- **Rate limits are not the cause of plain slowness.** Synapse answers a rate-limited request with `429 M_LIMIT_EXCEEDED` after at most a short pause, and mautrix doesn't retry 429s, so you would see an error reply, not a delay. The bot also lifts its own rate limit at startup (`ratelimit` in the startup check; a failure is posted to the audit room).
+
+Read the log in the maubot UI (*Logs*) or with `docker logs matrix-maubot 2>&1 | grep "reached the bot"`.
+
+## Handbook
+
+`handbook/` contains a LaTeX handbook in two versions, built from the same sources:
+
+| File | For | Content |
+|---|---|---|
+| `build/handbook-professors.pdf` | professors and TAs | getting started, courses, people, groups, templates, own bots, troubleshooting, command reference |
+| `build/handbook-technical.pdf` | admins, maintainers | everything above plus architecture, connection to Synapse and maubot, data and privacy, security, operations |
+
+```bash
+cd handbook
+make            # both PDFs into handbook/build/
+make professors # or: make technical
+make clean
+```
+
+Needs a TeX distribution with `latexmk` (MacTeX or TeX Live). Sections that only belong in the technical version are wrapped in `\iftechnical ... \fi`. When a command changes, update `strings/en.py` *and* the handbook (`handbook/chapters/`).

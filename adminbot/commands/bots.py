@@ -46,7 +46,7 @@ class BotCommands(CommandGroup):
             owner = self.user_arg(a.get(0))
             name = a.require(2, usage)[1]
             if owner != evt.sender and not self.bot.authz.is_admin(evt.sender):
-                raise Forbidden("err.forbidden")
+                raise Forbidden("err.forbidden_bot")
         else:
             owner, name = evt.sender, a.require(1, usage)[0]
         return owner, BotManager.check_name(name)
@@ -56,17 +56,18 @@ class BotCommands(CommandGroup):
         usage = t("usage.bot.create")
         await self.require(evt, Role.PROFESSOR)
         name = BotManager.check_name(split_args(args, usage=usage).require(1, usage)[0])
-        _ = self.manager  # raises if professor bots are disabled
-        if await self.bot.store.get_user_bot(evt.sender, name):
-            raise ValidationError("err.bot_exists", name=name)
-        await self.with_file(evt, self.on_mbp, {"action": "create", "owner": evt.sender, "name": name})
+        # Checked again when the file arrives; here so nobody uploads a file in vain.
+        await self.manager.check_can_create(evt.sender, name)
+        await self.with_file(evt, self.on_mbp, {"action": "create", "owner": evt.sender, "name": name},
+                             "msg.file_mbp")
 
     @command("bot", "update", usage="usage.bot.update", role=Role.PROFESSOR, needs=NEEDS)
     async def update(self, evt: MessageEvent, args: str) -> None:
         usage = t("usage.bot.update")
         owner, name = await self.target(evt, split_args(args, usage=usage), usage)
         await self.manager.get(owner, name)
-        await self.with_file(evt, self.on_mbp, {"action": "update", "owner": owner, "name": name})
+        await self.with_file(evt, self.on_mbp, {"action": "update", "owner": owner, "name": name},
+                             "msg.file_mbp")
 
     async def on_mbp(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
         await self.require(evt, Role.PROFESSOR)

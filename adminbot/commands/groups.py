@@ -29,8 +29,10 @@ PREVIEW_POSTS = 3
 class GroupCommands(CommandGroup):
     def __init__(self, bot: AdminBot) -> None:
         super().__init__(bot)
-        bot.jobs.register(JobKind.GROUPS_CREATE, self.create_item, audit_action="groups.create")
-        bot.jobs.register(JobKind.GROUPS_ASSIGN, self.assign_item, audit_action="groups.assign")
+        bot.jobs.register(JobKind.GROUPS_CREATE, self.create_item, audit_action="groups.create",
+                          done_hint="msg.next.groups_create")
+        bot.jobs.register(JobKind.GROUPS_ASSIGN, self.assign_item, audit_action="groups.assign",
+                          done_hint="msg.next.groups_assign")
         bot.jobs.register(JobKind.GROUPS_POST, self.post_item, on_finish=self.post_finish,
                           audit_action="groups.post")
 
@@ -96,7 +98,8 @@ class GroupCommands(CommandGroup):
             assignments = [(user, numbers[i - 1], "student") for i, users in split.items() for user in users]
             await self.plan_assign(evt, course, rooms, assignments, [], a.flag("dry-run"))
         else:
-            await self.with_file(evt, self.on_assign_file, {"code": course.code, "dry_run": a.flag("dry-run")})
+            await self.with_file(evt, self.on_assign_file, {"code": course.code, "dry_run": a.flag("dry-run")},
+                                 "msg.file_assign_csv")
 
     async def on_assign_file(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
         course = await self.require_course(evt, context["code"], Role.TA)
@@ -117,7 +120,7 @@ class GroupCommands(CommandGroup):
     async def plan_assign(self, evt: MessageEvent, course: Course, rooms: dict[int, RoomID],
                           assignments: list[tuple[str, int, str]], invalid: list[str], dry_run: bool) -> None:
         if not assignments:
-            raise ValidationError("err.nothing_to_assign")
+            raise ValidationError("err.nothing_to_assign", invalid=list_preview(invalid) or "-")
         counts = Counter(group for _, group, _ in assignments)
         per_group = ", ".join(f"{t('msg.group_name', n=g)}: {counts[g]}" for g in sorted(counts))
         summary = t("msg.groups_assign_plan", code=course.code, count=len(assignments), per_group=per_group)
@@ -142,7 +145,7 @@ class GroupCommands(CommandGroup):
         usage = t("usage.groups.post")
         a = split_args(args, usage=usage)
         course = await self.require_course(evt, a.require(1, usage)[0], Role.TA)
-        await self.with_file(evt, self.on_post_file, {"code": course.code})
+        await self.with_file(evt, self.on_post_file, {"code": course.code}, "msg.file_post_csv")
 
     async def on_post_file(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
         course = await self.require_course(evt, context["code"], Role.TA)
@@ -165,7 +168,7 @@ class GroupCommands(CommandGroup):
                     continue
                 items.append({"kind": "dm", "user_id": user_id, "message": message, "label": user_id})
         if not items:
-            raise ValidationError("err.nothing_to_post")
+            raise ValidationError("err.nothing_to_post", invalid=list_preview(invalid) or "-")
         preview = "\n".join(f"> **{i['label']}**: {i['message'][:200]}" for i in items[:PREVIEW_POSTS])
         summary = t("msg.groups_post_plan", code=course.code, count=len(items), preview=preview)
         if invalid:

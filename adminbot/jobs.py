@@ -48,6 +48,7 @@ class JobSpec:
     on_start: JobHook | None = None
     on_finish: JobHook | None = None
     audit_action: str = ""
+    done_hint: str = ""  # strings key appended to the final report: what to do next
 
 
 def describe_error(e: Exception) -> str:
@@ -69,8 +70,8 @@ class JobRunner:
         self.worker: asyncio.Task | None = None
 
     def register(self, kind: JobKind, item: ItemHandler, *, on_start: JobHook | None = None,
-                 on_finish: JobHook | None = None, audit_action: str = "") -> None:
-        self.specs[kind.value] = JobSpec(item, on_start, on_finish, audit_action or kind.value)
+                 on_finish: JobHook | None = None, audit_action: str = "", done_hint: str = "") -> None:
+        self.specs[kind.value] = JobSpec(item, on_start, on_finish, audit_action or kind.value, done_hint)
 
     async def start(self) -> None:
         """Start the worker task and enqueue unfinished jobs from the DB."""
@@ -178,6 +179,11 @@ class JobRunner:
             for item in await self.bot.store.failed_items(job.id):
                 target = item.payload.get("label") or item.payload.get("user_id") or item.payload.get("room_id") or item.idx
                 lines.append(f"- {target}: {item.error}")
+            if failed:
+                lines.append(t("msg.job_failed_hint"))
+            if spec.done_hint:
+                lines.append("\n" + t(spec.done_hint, course=job.context.get("course", ""),
+                                       bot=job.context.get("bot", "")))
             await self.bot.ops.send(job.room_id, "\n".join(lines))
         await self.bot.audit.log(
             job.requester, spec.audit_action, course=job.context.get("course"), bot=job.context.get("bot"),

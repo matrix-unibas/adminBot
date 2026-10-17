@@ -23,13 +23,32 @@ async def test_unknown_sender_gets_no_reply(chat):
 async def test_foreign_server_and_unrelated_messages_ignored(chat):
     assert await chat.send("!help", sender="@admin:evil.org") == []
     assert await chat.send("hello", sender=ADMIN) == []
-    assert await chat.send("!unknowncommand", sender=ADMIN) == []
+    assert chat.reactions() == []
+
+
+async def test_unknown_command_answered_only_in_dm(bot, chat):
+    reply = (await chat.send("!hlep", sender=ADMIN))[0]
+    assert "don't know the command `!hlep`" in reply and "Did you mean `!help`" in reply
+    assert await chat.send("!hlep", sender=STUDENT) == []
+    bot.ops.is_dm = AsyncMock(return_value=False)
+    # Other bots' commands in course rooms stay unanswered.
+    assert await chat.send("!ping", sender=PROF) == []
+
+
+async def test_commands_get_robot_reaction(bot, chat):
+    await chat.send("!whoami", sender=PROF)
+    assert chat.reactions() == ["\U0001F916"]
+    await chat.send("!whoami", sender=STUDENT)
+    bot.ops.is_dm = AsyncMock(return_value=False)
+    await chat.send("!whoami", sender=PROF)
+    assert chat.reactions() == ["\U0001F916"]
 
 
 async def test_command_outside_dm_is_refused(bot, chat):
     bot.ops.is_dm = AsyncMock(return_value=False)
     replies = await chat.send("!help", sender=ADMIN)
-    assert replies == ["Please send me commands in a direct chat with only you and me."]
+    assert len(replies) == 1 and replies[0].startswith("Please send me commands in a direct chat")
+    assert chat.reactions() == []
 
 
 async def test_help_depends_on_role(chat):
@@ -37,11 +56,39 @@ async def test_help_depends_on_role(chat):
     prof_help = (await chat.send("!help", sender=PROF))[0]
     assert "!admin prof" in admin_help and "!course create" in admin_help
     assert "!admin prof" not in prof_help and "!course create" in prof_help
+    assert "**Courses and rooms**" in prof_help and "`!help <command>`" in prof_help
+
+
+async def test_every_command_has_detailed_help(bot):
+    from adminbot.strings.en import STRINGS
+
+    for spec in bot.router.specs:
+        assert spec.help_key in STRINGS, spec.help_key
+        assert f"help.group.{spec.name}" in STRINGS or not spec.sub, spec.name
+
+
+async def test_help_for_one_command(chat):
+    reply = (await chat.send("!help course create", sender=PROF))[0]
+    assert reply.startswith("`!course create") and "**Example**" in reply
+    assert (await chat.send("!course create --help", sender=PROF))[0] == reply
+    assert (await chat.send("!course help create", sender=PROF))[0] == reply
+    group = (await chat.send("!help course", sender=PROF))[0]
+    assert "!course archive" in group and "`!help course <subcommand>`" in group
+    assert (await chat.send("!course help", sender=PROF))[0] == group
+    assert "only for bot admins" in (await chat.send("!help admin prof", sender=PROF))[0]
+    assert "no command `!nope`" in (await chat.send("!help nope", sender=PROF))[0]
 
 
 async def test_missing_subcommand_lists_usages(chat):
     reply = (await chat.send("!course", sender=PROF))[0]
     assert "!course create" in reply and "!course archive" in reply
+    reply = (await chat.send("!course creat X", sender=PROF))[0]
+    assert "no subcommand `creat`" in reply and "Did you mean `!course create`" in reply
+
+
+async def test_bad_arguments_point_to_detailed_help(chat):
+    reply = (await chat.send("!course create", sender=PROF))[0]
+    assert "Usage:" in reply and "`!help course create`" in reply
 
 
 async def test_whoami(bot, chat):
@@ -83,8 +130,8 @@ async def test_course_create(bot, chat):
 
 async def test_course_create_rejects_bad_input(chat):
     assert "not a semester" in (await chat.send('!course create CS1 "T" --semester 2026', sender=PROF))[0]
-    assert "not a valid course code" in (await chat.send('!course create "C S" "T"', sender=PROF))[0]
-    assert "Unknown option" in (await chat.send('!course create CS1 "T" --foo', sender=PROF))[0]
+    assert "can't be a course code" in (await chat.send('!course create "C S" "T"', sender=PROF))[0]
+    assert "know the option --foo" in (await chat.send('!course create CS1 "T" --foo', sender=PROF))[0]
 
 
 async def test_ta_scoping(bot, chat):
@@ -93,8 +140,8 @@ async def test_ta_scoping(bot, chat):
     await bot.store.add_staff("CS101", TA, "ta")
     bot.ops.room_settings = AsyncMock(return_value={"name": "Room"})
     assert "**CS101**" in (await chat.send("!course info CS101", sender=TA))[0]
-    assert "not allowed" in (await chat.send("!course info CS102", sender=TA))[0]
-    assert "not allowed" in (await chat.send("!course archive CS101", sender=TA))[0]
+    assert "only the staff of CS102" in (await chat.send("!course info CS102", sender=TA))[0]
+    assert "only the owner of CS101" in (await chat.send("!course archive CS101", sender=TA))[0]
     assert "There is no course" in (await chat.send("!course info NOPE", sender=TA))[0]
 
 
@@ -106,9 +153,11 @@ async def test_invite_flow(bot, chat, maubot_test_bot):
     assert "1 existing accounts" in plan and "1 new people" in plan and "1 entries are not usable" in plan
     code = re.search(r"!confirm (\w+)", plan).group(1)
 
-    assert "No pending plan" in (await chat.send(f"!confirm {code}", sender=ADMIN))[0]
+    assert "no plan with the code" in (await chat.send(f"!confirm {code}", sender=ADMIN))[0]
     await chat.send(f"!confirm {code}", sender=PROF)
     await wait_for_jobs(bot)
+    report = maubot_test_bot.responded[-1].content.body
+    assert "Job #" in report and "**Next:**" in report and "!signup list CS101" in report
 
     bot.ops.invite.assert_awaited_with(f"!cs101:{SERVER}", f"@old:{SERVER}")
     tokens = await bot.signups.open_tokens(f"@new:{SERVER}")
@@ -127,16 +176,41 @@ async def test_dry_run_and_cancel(bot, chat):
     assert "Dry run" in reply
     reply = (await chat.send("!invite CS101 a@unibas.ch", sender=PROF))[0]
     assert "!confirm" in reply
-    assert (await chat.send("!cancel", sender=PROF))[0] == "Cancelled."
+    assert (await chat.send("!cancel", sender=PROF))[0].startswith("Cancelled.")
     code = re.search(r"!confirm (\w+)", reply).group(1)
-    assert "No pending plan" in (await chat.send(f"!confirm {code}", sender=PROF))[0]
+    assert "no plan with the code" in (await chat.send(f"!confirm {code}", sender=PROF))[0]
 
 
 async def test_invite_waits_for_file(bot, chat):
     await make_course(bot)
     reply = (await chat.send("!invite CS101", sender=PROF))[0]
-    assert "Send the file now" in reply
+    assert "Now send me the list of email addresses" in reply
     assert bot.uploads.is_waiting(DM, PROF)
+
+
+async def test_rejected_upload_waits_for_corrected_file(bot, chat, maubot_test_bot):
+    await make_course(bot)
+    await chat.send("!invite CS101", sender=PROF)
+    bot.client.download_media = AsyncMock(return_value=b"nobody@gmail.com")
+    replies = await send_file(maubot_test_bot, chat)
+    assert "no usable university email addresses" in replies[0]
+    assert "You don't have to repeat the command" in replies[0]
+    assert bot.uploads.is_waiting(DM, PROF)
+    bot.client.download_media = AsyncMock(return_value=b"anna@unibas.ch")
+    replies = await send_file(maubot_test_bot, chat)
+    assert "!confirm" in replies[0] and not bot.uploads.is_waiting(DM, PROF)
+
+
+async def send_file(test_bot, chat, sender=PROF) -> list[str]:
+    from maubot.matrix import MaubotMessageEvent
+    from mautrix.types import EventType, MediaMessageEventContent, MessageEvent, MessageType
+
+    before = len(test_bot.responded)
+    content = MediaMessageEventContent(msgtype=MessageType.FILE, body="list.txt", url="mxc://example.com/x")
+    evt = MessageEvent(type=EventType.ROOM_MESSAGE, room_id=DM, event_id="$file", sender=sender,
+                       timestamp=0, content=content)
+    await test_bot.dispatch(EventType.ROOM_MESSAGE, MaubotMessageEvent(evt, test_bot.client))
+    return [r.content.body for r in test_bot.responded[before:] if r.event_type != EventType.REACTION]
 
 
 async def test_signup_new_and_revoke(bot, chat):
@@ -151,8 +225,8 @@ async def test_signup_new_and_revoke(bot, chat):
 async def test_ta_cannot_create_links_without_course_and_reset_is_admin_only(bot, chat):
     await make_course(bot)
     await bot.store.add_staff("CS101", TA, "ta")
-    assert "not allowed" in (await chat.send("!signup new a@unibas.ch", sender=TA))[0]
-    assert "not allowed" in (await chat.send(f"!signup reset {STUDENT}", sender=PROF))[0]
+    assert "only professors can" in (await chat.send("!signup new a@unibas.ch", sender=TA))[0]
+    assert "only bot admins can" in (await chat.send(f"!signup reset {STUDENT}", sender=PROF))[0]
     assert "Password-reset link" in (await chat.send(f"!signup reset {STUDENT}", sender=ADMIN))[0]
 
 
@@ -162,7 +236,7 @@ async def test_template_list_and_unknown(bot, chat):
     await bot.store.save_template("other", "personal", ADMIN, "version: 1")
     reply = (await chat.send("!template list", sender=PROF))[0]
     assert "base" in reply and "mine" in reply and "other" not in reply
-    assert "no template" in (await chat.send("!template export --saved nope", sender=PROF))[0]
+    assert "no template 'nope'" in (await chat.send("!template export --saved nope", sender=PROF))[0]
 
 
 async def test_bots_disabled(chat):

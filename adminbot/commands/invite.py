@@ -35,7 +35,8 @@ def list_preview(values: list[str], limit: int = MAX_LISTED) -> str:
 class InviteCommands(CommandGroup):
     def __init__(self, bot: AdminBot) -> None:
         super().__init__(bot)
-        bot.jobs.register(JobKind.INVITE, self.invite_item, on_start=self.invite_start, audit_action="invite")
+        bot.jobs.register(JobKind.INVITE, self.invite_item, on_start=self.invite_start, audit_action="invite",
+                          done_hint="msg.next.invite")
 
     @command("invite", usage="usage.invite", role=Role.TA)
     async def invite(self, evt: MessageEvent, args: str) -> None:
@@ -48,7 +49,7 @@ class InviteCommands(CommandGroup):
         if extract_emails(text):
             await self.plan_invites(evt, course, text, context["dry_run"])
         else:
-            await self.with_file(evt, self.on_file, context)
+            await self.with_file(evt, self.on_file, context, "msg.file_emails")
 
     async def on_file(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
         course = await self.require_course(evt, context["code"], Role.TA)
@@ -58,7 +59,8 @@ class InviteCommands(CommandGroup):
         users, invalid = group_by_user(
             extract_emails(text), self.bot.server_name, self.bot.config["identity.allowed_domains"])
         if not users:
-            raise ValidationError("err.no_valid_emails", invalid=list_preview(invalid) or "-")
+            raise ValidationError("err.no_valid_emails", invalid=list_preview(invalid) or "-",
+                                  domains=", ".join(self.bot.config["identity.allowed_domains"]))
         existing, new = [], []
         for user_id, emails in users.items():
             if await self.bot.synapse.user_exists(user_id):

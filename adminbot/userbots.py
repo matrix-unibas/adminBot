@@ -24,7 +24,7 @@ from ruamel.yaml.error import YAMLError
 
 from .confirm import Plan
 from .db import BotRequest, Job, JobItem, UserBot
-from .errors import Forbidden, NotFound, ValidationError
+from .errors import NotFound, ValidationError
 from .strings import t
 
 if TYPE_CHECKING:
@@ -60,43 +60,43 @@ def validate_mbp(data: bytes, max_size: int) -> MbpInfo:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as e:
-        raise _invalid("not a zip file") from e
+        raise _invalid("the file is not a zip archive (an .mbp is the zip file that `mbc build` creates)") from e
     infos = archive.infolist()
     names = set()
     for info in infos:
         name = info.filename
         if name.startswith("/") or "\\" in name or ".." in name.split("/") or re.match(r"^[A-Za-z]:", name):
-            raise _invalid(f"unsafe path '{name}'")
+            raise _invalid(f"the archive contains the unsafe path '{name}' (absolute or with '..')")
         names.add(name)
     if sum(info.file_size for info in infos) > max_size * 10:
-        raise _invalid("unpacked size too large")
+        raise _invalid("the unpacked files are too large")
     if "maubot.yaml" not in names:
-        raise _invalid("maubot.yaml missing")
+        raise _invalid("there is no maubot.yaml at the top level of the archive (run `mbc build` in the folder that contains maubot.yaml)")
     try:
         meta = YAML(typ="safe").load(archive.read("maubot.yaml"))
     except YAMLError as e:
-        raise _invalid("maubot.yaml is not valid YAML") from e
+        raise _invalid("maubot.yaml is not valid YAML (check the indentation)") from e
     if not isinstance(meta, dict):
-        raise _invalid("maubot.yaml is not a mapping")
+        raise _invalid("maubot.yaml must consist of `key: value` lines")
     plugin_id = str(meta.get("id") or "")
     if not PLUGIN_ID_RE.match(plugin_id):
-        raise _invalid("missing or invalid id")
+        raise _invalid("maubot.yaml has no valid `id:` (lowercase letters, digits, `.`, `_`, `-`, e.g. `ch.unibas.max.muster.quiz`)")
     version = str(meta.get("version") or "")
     if not version:
-        raise _invalid("missing version")
+        raise _invalid("maubot.yaml has no `version:` (e.g. `version: 1.0.0`)")
     modules = meta.get("modules") or []
     if not isinstance(modules, list) or not modules or not all(isinstance(m, str) for m in modules):
-        raise _invalid("missing modules")
+        raise _invalid("maubot.yaml has no `modules:` list (the Python module(s) of your plugin)")
     main_class = str(meta.get("main_class") or "")
     if not main_class:
-        raise _invalid("missing main_class")
+        raise _invalid("maubot.yaml has no `main_class:` (the name of your Plugin class)")
     main_module = main_class.split("/", 1)[0] if "/" in main_class else modules[-1]
     main_path = main_module.replace(".", "/")
     if f"{main_path}/__init__.py" not in names and f"{main_path}.py" not in names:
-        raise _invalid(f"main module '{main_module}' not found")
+        raise _invalid(f"the module '{main_module}' named in maubot.yaml is not in the archive (add its folder or .py file to `modules:` and rebuild)")
     dependencies = meta.get("dependencies") or []
     if not isinstance(dependencies, list):
-        raise _invalid("dependencies must be a list")
+        raise _invalid("`dependencies:` in maubot.yaml must be a list")
     return MbpInfo(
         plugin_id=plugin_id, version=version, modules=modules, main_class=main_class,
         dependencies=[str(d) for d in dependencies], sha256=hashlib.sha256(data).hexdigest(), size=len(data),
@@ -239,8 +239,22 @@ class BotManager:
     def check_name(name: str) -> str:
         name = (name or "").lower()
         if not BOT_NAME_RE.match(name):
-            raise ValidationError("err.bot_name")
+            raise ValidationError("err.bot_name", name=name)
         return name
+
+    async def check_can_create(self, owner: UserID, name: str) -> None:
+        """Name free and quota not reached (admins have no quota)."""
+        if await self.bot.store.get_user_bot(owner, name):
+            raise ValidationError("err.bot_exists", name=name)
+        limit = self.cfg["user_bots.max_per_professor"]
+        if not self.bot.authz.is_admin(owner) and await self.bot.store.count_user_bots(owner) >= limit:
+            raise ValidationError("err.bot_quota", limit=limit)
+
+    @staticmethod
+    def suggest_plugin_id(owner: UserID, plugin_id: str) -> str:
+        """ch.unibas.<owner-localpart>.<last part of the taken ID>, e.g. ch.unibas.max.muster.echo"""
+        localpart = re.sub(r"[^a-z0-9.-]", "-", owner[1:].split(":", 1)[0].lower())
+        return f"ch.unibas.{localpart}.{plugin_id.rsplit('.', 1)[-1]}"
 
     def bot_user_id(self, owner: UserID, name: str) -> UserID:
         """@bot.<owner-localpart>.<name>:<server>"""
@@ -256,21 +270,21 @@ class BotManager:
         name = self.check_name(name)
         existing = await self.bot.store.get_user_bot(owner, name)
         if action == "create":
-            if existing:
-                raise ValidationError("err.bot_exists", name=name)
-            limit = self.cfg["user_bots.max_per_professor"]
-            if not self.bot.authz.is_admin(owner) and await self.bot.store.count_user_bots(owner) >= limit:
-                raise ValidationError("err.bot_quota", limit=limit)
+            await self.check_can_create(owner, name)
         elif not existing:
             raise NotFound("err.bot_unknown", name=name)
         info = validate_mbp(data, self.cfg["user_bots.max_mbp_size_mb"] * 1024 * 1024)
         if info.plugin_id == OWN_PLUGIN_ID:
-            raise ValidationError("err.mbp_invalid", detail="reserved plugin ID")
+            raise ValidationError("err.plugin_taken", plugin_id=info.plugin_id,
+                                  suggestion=self.suggest_plugin_id(owner, info.plugin_id))
         plugin_owner = await self.bot.store.plugin_owner(info.plugin_id)
         if plugin_owner and plugin_owner != owner:
-            raise Forbidden("err.plugin_taken", plugin_id=info.plugin_id)
+            # A file problem (the professor can fix the ID), so ValidationError: the router then
+            # waits for a corrected file instead of making them repeat the command.
+            raise ValidationError("err.plugin_taken", plugin_id=info.plugin_id,
+                                  suggestion=self.suggest_plugin_id(owner, info.plugin_id))
         if existing and existing.sha256 == info.sha256:
-            raise ValidationError("err.bot_unchanged", name=name)
+            raise ValidationError("err.bot_unchanged", name=name, version=info.version)
         missing = missing_dependencies(info.dependencies)
         if missing:
             raise ValidationError("err.mbp_dependencies", deps=", ".join(missing))
@@ -316,7 +330,7 @@ class BotManager:
                                                    drop_package=True)
         await self.bot.audit.log(admin, "bot.reject", bot=request.name, target_count=1)
         room_id = await self.bot.ops.open_dm(request.owner)
-        await self.bot.ops.send(room_id, t("msg.bot_rejected", name=request.name, reason=reason or "-"))
+        await self.bot.ops.send(room_id, t("msg.bot_rejected", name=request.name, reason=reason or "-", admin=admin))
 
     async def provision_item(self, job: Job, item: JobItem) -> None:
         """Plan §10 step 5. Safe to re-run after an interruption."""
@@ -361,7 +375,8 @@ class BotManager:
             user_id=user_id, sha256=request.sha256, state="running",
         ))
         room_id = await self.bot.ops.open_dm(request.owner)
-        await self.bot.ops.send(room_id, t("msg.bot_ready", name=request.name, user_id=user_id))
+        await self.bot.ops.send(room_id, t("msg.bot_ready", name=request.name, user_id=user_id,
+                                           plugin_id=request.plugin_id))
 
     async def _provision_update(self, request: BotRequest) -> None:
         bot = await self.bot.store.get_user_bot(request.owner, request.name)

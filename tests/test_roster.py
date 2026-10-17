@@ -29,3 +29,11 @@ def test_is_dm_members():
     assert not is_dm_members({BOT, PROF}, {TA}, BOT, PROF)
     assert not is_dm_members({BOT}, {PROF}, BOT, PROF)
     assert not is_dm_members({BOT, PROF}, set(), BOT, BOT)
+
+
+def test_hard_breaks():
+    from adminbot.matrix_ops import hard_breaks
+
+    assert hard_breaks("Owner: x\nTAs: y\n\nnext") == "Owner: x  \nTAs: y\n\nnext"
+    fenced = "intro\n```\nkey: 1\n  sub: 2\n```\nend"
+    assert hard_breaks(fenced) == fenced

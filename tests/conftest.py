@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
-from mautrix.types import MessageType
+from mautrix.types import EventType, MessageType
 
 from adminbot.bot import AdminBot
 from adminbot.config import Config
@@ -93,9 +93,13 @@ class Chat:
         self.test_bot = test_bot
 
     async def send(self, text: str, sender: str = ADMIN, room_id: str = DM) -> list[str]:
+        """The bot's text replies to this message (reactions are left out, see reactions())."""
         before = len(self.test_bot.responded)
         await self.test_bot.send(text, sender=sender, room_id=room_id)
-        return [r.content.body for r in self.test_bot.responded[before:]]
+        return [r.content.body for r in self.test_bot.responded[before:] if r.event_type != EventType.REACTION]
+
+    def reactions(self) -> list[str]:
+        return [r.content.relates_to.key for r in self.test_bot.responded if r.event_type == EventType.REACTION]
 
     def files(self) -> list:
         return [r.content for r in self.test_bot.responded if getattr(r.content, "msgtype", None) == MessageType.FILE]

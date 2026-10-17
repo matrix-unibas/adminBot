@@ -6,3 +6,10 @@ dev/standalone.yaml
 __pycache__/
 .venv/
 .pytest_cache/
+
+# Built plugin packages
+*.mbp
+.DS_Store
+
+# Handbook build output (make in handbook/)
+handbook/build/

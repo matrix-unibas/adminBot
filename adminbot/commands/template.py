@@ -57,7 +57,7 @@ class TemplateCommands(CommandGroup):
         name = check_name(a.require(1, usage)[0])
         scope = "global" if a.flag("global") else "personal"
         await self.require(evt, Role.ADMIN if scope == "global" else Role.PROFESSOR)
-        await self.with_file(evt, self.on_file, {"name": name, "scope": scope})
+        await self.with_file(evt, self.on_file, {"name": name, "scope": scope}, "msg.file_yaml")
 
     async def on_file(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
         await self.require(evt, Role.ADMIN if context["scope"] == "global" else Role.PROFESSOR)

@@ -55,3 +55,10 @@ def test_rejects_non_zip_and_oversized():
 
 def test_missing_dependencies():
     assert missing_dependencies(["aiohttp>=3", "surely-not-installed-pkg==1"]) == ["surely-not-installed-pkg==1"]
+
+
+def test_plugin_id_suggestion():
+    from adminbot.userbots import BotManager
+
+    assert BotManager.suggest_plugin_id("@max.muster:example.com", "xyz.maubot.echo") == "ch.unibas.max.muster.echo"
+    assert BotManager.suggest_plugin_id("@Ann_B:example.com", "echo") == "ch.unibas.ann-b.echo"
