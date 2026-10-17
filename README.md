@@ -1,5 +1,9 @@
 # MARVIN admin bot
 
+[![tests](https://github.com/matrix-unibas/adminBot/actions/workflows/tests.yml/badge.svg)](https://github.com/matrix-unibas/adminBot/actions/workflows/tests.yml)
+[![handbook](https://github.com/matrix-unibas/adminBot/actions/workflows/handbook.yml/badge.svg)](https://github.com/matrix-unibas/adminBot/actions/workflows/handbook.yml)
+[![release](https://img.shields.io/github/v/release/matrix-unibas/adminBot?include_prereleases)](https://github.com/matrix-unibas/adminBot/releases)
+
 maubot plugin `ch.unibas.dmi.marvin.adminbot`. The plan, with the design and its reasoning, is in [claude.md](claude.md). The server-side setup (account, nginx, backups, the second maubot for professor bots) is in the server repo: [matrix-unibas/server/docs/admin-bot-setup.md](https://github.com/matrix-unibas/matrix-unibas/blob/main/server/docs/admin-bot-setup.md).
 
 Professors and TAs talk to `@adminbot` in a direct chat. The bot reacts with 🤖 as soon as it starts on a command. `!help` lists what the sender may use; `!help <command>` (or `!<command> help`, `!<command> <sub> --help`) explains one command with its arguments, an example and the next steps:
@@ -15,7 +19,7 @@ Professors and TAs talk to `@adminbot` in a direct chat. The bot reacts with �
 | Bulk changes | shown as a plan first, run with `!confirm <code>`, dropped with `!cancel` |
 | Help | `!help`, `!help <command> [<sub>]`, `!whoami` |
 
-User documentation: the handbook in [`handbook/`](handbook/) (see [Handbook](#handbook)).
+User documentation: the handbook, as PDF from the latest release ([professors and TAs](https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-professors.pdf), [technical](https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-technical.pdf)); sources in [`handbook/`](handbook/) (see [Handbook](#handbook)).
 
 ## Layout
 
@@ -37,6 +41,7 @@ adminbot/
 tests/                          pytest (uses maubot's own test fixtures)
 dev/                            local Synapse + Postgres (+ optional second maubot) for the MacBook
 handbook/                       LaTeX handbook (professors' and technical version) + Makefile
+.github/workflows/              CI: tests, handbook PDFs, releases (see Releasing)
 ```
 
 ## Testing: four levels, fastest first
@@ -57,7 +62,7 @@ Production gets exactly the `.mbp` that passed level 4.
 Python **3.12** (`.python-version` pins it for uv). maubot's standalone mode (level 3) does not run on 3.14.
 
 ```bash
-git clone git@github.com:Noah-Klaholz/adminBot.git && cd adminBot
+git clone git@github.com:matrix-unibas/adminBot.git && cd adminBot
 uv sync --group dev            # or: python3.12 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
@@ -104,7 +109,7 @@ find adminbot -name __pycache__ -prune -exec rm -rf {} +   # mbc packs __pycache
 .venv/bin/mbc build                                       # -> ch.unibas.dmi.marvin.adminbot-v<version>.mbp (gitignored)
 ```
 
-Upload it in the maubot UI on the test node (`https://localhost:8443/_matrix/maubot/` through the SSH tunnel). The instance reloads with the new version. After the checklist passes, upload the same file to production.
+Or let CI build it: see [Releasing](#releasing). Upload it in the maubot UI on the test node (`https://localhost:8443/_matrix/maubot/` through the SSH tunnel). The instance reloads with the new version. After the checklist passes, upload the same file to production.
 
 Checklist on the test node, which levels 1–3 can't cover:
 - [ ] The DM with the bot is encrypted, and the bot answers.
@@ -116,6 +121,30 @@ Checklist on the test node, which levels 1–3 can't cover:
 - [ ] The audit room receives the startup checks.
 - [ ] The 🤖 reaction appears right after sending a command, and multi-line replies (`!course info`, `!whoami`) show one item per line in Element.
 - [ ] Professor bots (Phase 8, `user_bots.enabled`): `!bot create` with an `.mbp` → approval in the audit room → the bot answers in the professor's room; `!bot delete` deactivates the account and removes the instance. Full steps: admin-bot-setup.md, section 7.5.
+
+## Releasing
+
+Releases are made by CI (`.github/workflows/release.yml`), not by hand. Pushing a tag `v<version>`:
+- fails unless the tag matches `version:` in `maubot.yaml`
+- runs the tests (`tests.yml`) and builds both handbook PDFs (`handbook.yml`)
+- builds `ch.unibas.dmi.marvin.adminbot-v<version>.mbp` from a clean checkout
+- creates a **pre-release** with the `.mbp` and the two PDFs attached, and release notes from the commits
+
+```bash
+# 1. bump `version` in maubot.yaml, commit, push to main
+git tag v0.2.0 && git push origin v0.2.0
+gh run watch                                              # or the Actions tab
+
+# 2. test exactly that file on the test node (checklist above)
+gh release download v0.2.0 --pattern '*.mbp'
+
+# 3. checklist passed: make it the latest release, then upload the same file to production
+gh release edit v0.2.0 --prerelease=false --latest
+```
+
+- A pre-release never counts as *latest*, so the handbook links at the top of this README (`releases/latest/download/...`) always point to a release that passed the test node.
+- A failed release: fix it, delete the tag (`git push --delete origin v0.2.0 && git tag -d v0.2.0`) and the release, if one was created (`gh release delete v0.2.0`), then tag again.
+- Every push to `main` and every PR runs the tests; changes under `handbook/` also build the PDFs (download them from the run's *Artifacts*).
 
 ## Slow replies
 
@@ -146,5 +175,7 @@ make            # both PDFs into handbook/build/
 make professors # or: make technical
 make clean
 ```
+
+The built PDFs aren't committed (`handbook/build/` is gitignored). CI attaches them to every release; the latest ones are always at `https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-professors.pdf` and `.../handbook-technical.pdf`.
 
 Needs a TeX distribution with `latexmk` (MacTeX or TeX Live). Sections that only belong in the technical version are wrapped in `\iftechnical ... \fi`. When a command changes, update `strings/en.py` *and* the handbook (`handbook/chapters/`).
