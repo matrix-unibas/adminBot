@@ -1,0 +1,33 @@
+# Builds both handbook PDFs with the Makefile and keeps them as a workflow artifact.
+# Catches LaTeX errors before a release; release.yml calls it to attach the PDFs.
+name: handbook
+
+on:
+  push:
+    branches: [main]
+    paths: ["handbook/**", ".github/workflows/handbook.yml"]
+  pull_request:
+    paths: ["handbook/**", ".github/workflows/handbook.yml"]
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  pdf:
+    runs-on: ubuntu-latest
+    # Full TeX Live: the preamble needs KOMA-Script, tcolorbox, fontawesome5, sourcesans, inconsolata.
+    container: texlive/texlive:latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build PDFs
+        run: |
+          command -v make >/dev/null || { apt-get update && apt-get install -y --no-install-recommends make; }
+          make -C handbook
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: handbook
+          path: handbook/build/handbook-*.pdf
+          if-no-files-found: error
