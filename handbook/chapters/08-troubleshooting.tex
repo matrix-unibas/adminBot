@@ -1,0 +1,102 @@
+\chapter{Troubleshooting and questions}
+\label{ch:troubleshooting}
+
+Every reply of the bot says what happened and what to do next. This chapter collects the
+situations where that isn't enough, or where the problem is outside the bot.
+
+\section{The bot doesn't react at all}
+\label{sec:no-reply}
+
+\begin{itemize}
+  \item \textbf{You have no role yet.} The bot silently ignores everyone who isn't a
+        professor, TA or bot admin, so that students can't probe it. Ask a bot admin to add
+        you as professor, or the course owner to add you as TA.
+  \item \textbf{The command doesn't start with \cmd{!}}, or there is something before it.
+        Commands must be the first thing in the message.
+  \item \textbf{You edited the message.} The bot doesn't read edits. Send the corrected
+        command as a new message.
+  \item \textbf{The bot is down.} If even \cmd{!whoami} gets no \robot{} reaction after a
+        minute, tell a bot admin.
+\end{itemize}
+
+\section{Replies take long}
+\label{sec:slow}
+
+Watch for the \robot{} reaction:
+
+\begin{itemize}
+  \item \textbf{The reaction appears quickly, the reply later:} the bot is working. Creating a
+        course with many rooms takes a few seconds; bulk work runs as a job and reports when
+        it's done.
+  \item \textbf{The reaction itself comes late:} your message reached the bot late. That is a
+        server or network issue, not your command. If it persists, tell a bot admin the
+        time; the bot logs for every command how long the message took to arrive.
+\end{itemize}
+
+\section{Messages from the bot and what to do}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{5.3cm}L@{}}
+\toprule
+\textbf{The bot says \dots} & \textbf{What to do} \\
+\midrule
+\enquote{Please send me commands in a direct chat \dots} &
+  Use your one-to-one chat with \botid{}. In course rooms the bot doesn't take commands. \\
+\enquote{You are not allowed to do that: only \dots} &
+  The message names who may do it. Check your roles with \cmd{!whoami}; ask the course
+  owner or a bot admin. \\
+\enquote{There is no plan with the code \dots} &
+  The plan expired (10 minutes), was replaced by a newer one, or someone else's code was
+  used. Send the original command again. \\
+\enquote{\dots{} send the corrected \dots{} here} &
+  Your file was rejected for the reason given above it. Fix the file and send only the
+  file again. \\
+\enquote{I couldn't read the arguments} &
+  Something is missing or a title with spaces isn't in quotes. The reply shows the right
+  form; \cmd{!help <command>} has an example. \\
+\enquote{The Matrix server refused a step \dots} &
+  The server rejected an action, e.g.\ inviting a deactivated account. The reason is in
+  the message; if it doesn't help, try again later or ask an admin. \\
+\enquote{Something went wrong on my side} &
+  An unexpected error. Parts of the command may have run already; check with
+  \cmd{!course info}. Tell a bot admin the time of your command. \\
+\enquote{\dots{} a server check failed when I started} &
+  A server problem (e.g.\ professor bots misconfigured). Tell a bot admin. \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Questions from students}
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[\enquote{My link says it is invalid or expired.}]
+    Links expire after 14 days and work only once. If the student has no account yet:
+    \cmd{!signup renew <email>} gives a new link. If the link was used already, they have an
+    account: they log in with the username shown on the link page and their password.
+  \item[\enquote{I forgot my password.}]
+    Only a bot admin can create a reset link (\cmd{!signup reset}). Point the student to the
+    admins.
+  \item[\enquote{I have an account but don't see the course.}]
+    Existing accounts get an \emph{invitation} to the course space, which they have to accept
+    in Element (look under \ui{Invites} or in the space list). If there is no invitation, they
+    weren't on your list: \cmd{!signup new <email> <course>} invites them right away.
+  \item[\enquote{I registered with my staff address, the list has my student address.}]
+    Doesn't matter: \cmd{name@unibas.ch} and \cmd{name@stud.unibas.ch} are the same account.
+  \item[\enquote{I can't read older messages.}]
+    Encrypted messages need the keys from their other devices or their recovery key. After
+    a password reset or on a new device without the recovery key, older messages stay
+    unreadable. That can't be fixed afterwards.
+  \item[\enquote{I can't write in Announcements.}]
+    That's intended: only staff can post there. Questions belong in \enquote{Questions}.
+\end{description}
+
+\section{Things the bot doesn't do}
+
+\begin{itemize}
+  \item It doesn't send emails; you send the signup links (\autoref{sec:mailmerge}).
+  \item It doesn't delete courses or rooms; \cmd{!room remove} only takes a room out of the
+        course.
+  \item It doesn't know when someone leaves the university. Remove students from a course
+        with \cmd{!roster sync --remove}; deactivating accounts is up to the admins.
+  \item It doesn't answer in course rooms, and it ignores students.
+\end{itemize}

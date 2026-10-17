@@ -1,0 +1,146 @@
+\chapter{Architecture}
+\label{ch:architecture}
+
+The admin bot is a \emph{maubot} plugin (\cmd{ch.unibas.dmi.marvin.adminbot}) written in
+Python. maubot is a bot framework that runs plugins inside one process and gives each
+running \emph{instance} a Matrix client, a database and optionally a small web app. The
+plugin uses all three.
+
+\section{Components}
+
+\begin{center}
+\begin{tikzpicture}[
+  box/.style={draw=accent,fill=white,rounded corners=3pt,font=\footnotesize\sffamily,align=center,
+    minimum height=1cm,text width=2.2cm},
+  wide/.style={box,text width=6.0cm},
+  zone/.style={draw=gray!60,dashed,rounded corners=6pt,inner sep=7pt},
+  arr/.style={-{Stealth[length=2mm]},accent,thick},
+  both/.style={{Stealth[length=2mm]}-{Stealth[length=2mm]},accent,thick},
+  lbl/.style={font=\scriptsize\sffamily,text=gray,align=center}]
+  \node[box] (element) at (-0.3,1.3) {Element\\(professors, students)};
+  \node[box] (browser) at (-0.3,-0.5) {Browser\\(signup page)};
+  \node[box] (nginx) at (2.9,0.4) {host nginx\\TLS, routing};
+  \node[wide] (synapse) at (9.35,1.9) {Synapse \quad \cmd{http://synapse:8008}};
+  \node[box,fill=accentlight] (main) at (7.3,-0.2) {maubot \enquote{main}\\\textbf{admin bot plugin}};
+  \node[box] (userbots) at (11.4,-0.2) {maubot \enquote{userbots}\\professor bots};
+  \node[wide] (pg) at (9.35,-2.3) {PostgreSQL: synapse, maubot, userbots};
+  \draw[arr] (element.east) -- (nginx.west);
+  \draw[arr] (browser.east) -- (nginx.west);
+  \draw[arr] (nginx.east) -- node[lbl,above,sloped]{\cmd{/_matrix}} (synapse.west);
+  \draw[arr] (nginx.east) -- node[lbl,below,sloped]{signup route} (main.west);
+  \draw[both] (main.north) -- node[lbl,right,xshift=1pt]{client-server\\+ admin API} (main.north |- synapse.south);
+  \draw[both] (userbots.north) -- node[lbl,left,xshift=-1pt]{client-server\\API} (userbots.north |- synapse.south);
+  \draw[arr] (main.east) -- node[lbl,above]{management} node[lbl,below]{API} (userbots.west);
+  \draw[both] (main.south) -- (main.south |- pg.north);
+  \draw[both] (userbots.south) -- (userbots.south |- pg.north);
+  \draw[both] (synapse.east) -- ++(0.55,0) |- (pg.east);
+  \coordinate (edge) at ($(synapse.east)+(0.6,0)$);
+  \begin{scope}[on background layer]
+    \node[zone,fit=(synapse)(main)(userbots)(pg)(edge),
+      label={[lbl]above:Docker network}] {};
+  \end{scope}
+\end{tikzpicture}
+\end{center}
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[Synapse] The Matrix homeserver for \server. Federation is off.
+  \item[host nginx] Terminates TLS. All of \cmd{/_matrix} goes to Synapse, except the prefix
+    \cmd{/_matrix/maubot/plugin/<instance>/}, which goes to maubot so the signup page is
+    reachable from outside. The maubot management API and UI are not routed; admins reach
+    them through an SSH tunnel (\cmd{https://localhost:8443/_matrix/maubot/}).
+  \item[maubot \enquote{main}] (container \cmd{matrix-maubot}) runs the admin bot instance
+    with the client \cmd{@adminbot}. It reaches Synapse directly on the Docker network.
+  \item[maubot \enquote{userbots}] (container \cmd{matrix-userbots}) runs the professor bots.
+    It is a second, separate maubot without published ports; the admin bot manages it
+    through its management API (\autoref{sec:why-userbots}).
+  \item[PostgreSQL] Separate databases for Synapse, the main maubot (incl.\ the admin bot's
+    tables) and userbots.
+\end{description}
+
+\section{Inside the plugin}
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}lL@{}}
+\toprule
+\textbf{Module} & \textbf{Responsibility} \\
+\midrule
+\file{bot.py} & plugin class: builds the services, startup self-check, cleanup timer, registers handlers \\
+\file{commands/base.py} & \cmd{CommandRouter}, the only Matrix event handler; \cmd{@command}; shared helpers (replies, files, plans) \\
+\file{commands/*.py} & one class per command group (\cmd{course}, \cmd{invite}, \cmd{groups}, \dots) \\
+\file{authz.py} & roles and the single permission check \cmd{require(role, course)} \\
+\file{confirm.py}, \file{jobs.py} & plans with confirm codes; resumable, throttled job runner \\
+\file{signups.py}, \file{delivery.py} & signup and reset tokens, pending invites; CSV/inline delivery \\
+\file{web/} & signup and reset pages, rate limiter \\
+\file{synapse_admin.py} & wrappers for the Synapse admin API \\
+\file{matrix_ops.py} & rooms, spaces, power levels, membership, DM check, sending \\
+\file{templates.py} & template schema, parse/dump, snapshot of a live course, apply \\
+\file{userbots.py} & \file{.mbp} validation, client for the userbots maubot, provisioning \\
+\file{identity.py}, \file{parsing.py}, \file{roster.py} & pure logic: email to user ID, arguments and CSV, roster diff \\
+\file{db.py}, \file{migrations.py} & SQL (SQLite in tests, PostgreSQL in production) \\
+\file{audit.py} & audit table and audit room \\
+\file{strings/en.py} & every user-facing text, including the detailed help \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{The path of a command}
+\label{sec:command-path}
+
+\begin{enumerate}
+  \item The professor's Element encrypts the message and sends it to Synapse.
+  \item maubot's client for \cmd{@adminbot} receives it through its \cmd{/sync} loop, and
+        mautrix decrypts it.
+  \item \cmd{CommandRouter.on_message} checks, cheapest first:
+        \begin{itemize}
+          \item the message is text and starts with \cmd{!<name>};
+          \item the sender is local and \emph{known} (admin, professor or staff of a course).
+                Everyone else is ignored without a reply;
+          \item the room is a DM between exactly the bot and the sender
+                (\autoref{sec:dm-rule}). Otherwise known users get \enquote{please DM me},
+                and unknown command names are ignored, because other bots in course rooms
+                use \cmd{!} commands too;
+          \item the startup checks the command depends on have passed.
+        \end{itemize}
+  \item The router reacts with \robot, records the DM for later notifications, and calls the
+        handler. \cmd{!x help}, \cmd{!x y --help} and unknown subcommands are answered by the
+        help handler.
+  \item The handler parses the arguments, calls \cmd{authz.require(role, course)}, and does
+        the work through the services.
+  \item Errors become replies: \cmd{AdminBotError} subclasses carry a strings key, Matrix
+        errors are shown with the server's reason, anything else as an internal error
+        (with the traceback in the log).
+  \item The router logs how long the message took to reach the bot and how long the handler
+        took (\autoref{sec:timing}).
+\end{enumerate}
+
+\section{Plans and jobs}
+
+Bulk or destructive commands never act directly. The handler builds a \emph{plan}: a
+summary, a list of items (one per user or room) and a context (course, the role to
+re-check, flags). \cmd{ConfirmRegistry.propose} stores it in the \cmd{plan} table with a
+random four-character code and a ten-minute expiry; a user has at most one open plan.
+
+\cmd{!confirm <code>} pops the plan (only for its requester), re-checks the role against
+the course and hands it to the \cmd{JobRunner}:
+
+\begin{itemize}
+  \item the job and one \cmd{job_item} row per item are written to the database;
+  \item an optional \cmd{on_start} hook runs once (e.g.\ \cmd{!invite} creates the signup
+        links and delivers the CSV);
+  \item a single worker task processes items one by one, with \cmd{jobs.delay_seconds}
+        between them, and edits one progress message every few seconds;
+  \item item failures are recorded per item and don't stop the job;
+  \item at the end, an optional \cmd{on_finish} hook runs, then the report (with failed
+        items and a next-step hint) and an audit entry.
+\end{itemize}
+
+Unfinished jobs are re-queued when the plugin starts, so a restart resumes where it stopped.
+
+\section{Files}
+
+Commands that need a file either use the file the command replies to, or register a
+\emph{pending upload} (in memory, per room and sender, \cmd{uploads.wait_minutes}) and take
+the next file the sender posts in that DM. Encrypted attachments are decrypted with
+\cmd{mautrix.crypto.attachments}. If an upload handler raises a \cmd{ValidationError}, the
+router registers the same handler and context again, so the user only re-sends the file.

@@ -1,0 +1,188 @@
+\chapter{Courses and rooms}
+\label{ch:courses}
+
+\section{Create a course}
+
+\begin{center}
+\cmd{!course create <code> "<title>" [--semester HS26] [--template <name>]}
+\end{center}
+
+\begin{description}[leftmargin=7em,style=sameline,font=\normalfont\ttfamily]
+  \item[<code>] A short, unique code such as \cmd{CS101}. Letters, digits, \cmd{.}, \cmd{_} and
+        \cmd{-}, at most 32 characters, no spaces. The bot stores it in capitals, and you can
+        type it in any case afterwards.
+  \item["<title>"] The course title. Put it in quotes if it contains spaces.
+  \item[--semester] \cmd{HS} (autumn semester) or \cmd{FS} (spring semester) plus the
+        two-digit year, e.g.\ \cmd{HS26}. Without it, the current semester is used
+        (August--January: HS, February--July: FS).
+  \item[--template] Use a saved layout instead of the default one (\autoref{ch:templates}).
+\end{description}
+
+\begin{you}
+!course create CS101 "Introduction to Computer Science" --semester HS26
+\end{you}
+\begin{botreply}
+Course \textbf{CS101} is ready: https://matrix.to/\#/!abc...\\
+Rooms: Announcements, General, Questions, Staff\\
+You are invited to the space and all rooms; accept the invitations in Element.\\[4pt]
+\textbf{Next steps} \dots
+\end{botreply}
+
+The space is called \enquote{\texttt{CS101 Introduction to Computer Science (HS26)}}. You
+become the course \emph{owner}: the bot gives you full rights in every room, and only you
+(and bot admins) can change the course's structure.
+
+\subsection*{The default rooms}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lLL@{}}
+\toprule
+\textbf{Room} & \textbf{Who can join} & \textbf{Who can write} \\
+\midrule
+Announcements & everyone in the course space & staff only (owner and TAs) \\
+General & everyone in the course space & everyone \\
+Questions & everyone in the course space & everyone \\
+Staff & only the owner and TAs (by invitation) & owner and TAs \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+All rooms are end-to-end encrypted. New members can read the history from before they
+joined. Students join a room by opening the course space in Element and clicking the room.
+
+\subsection*{Permissions inside the rooms}
+
+Matrix rooms have \emph{power levels}. The bot sets them for you:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Who} & \textbf{Power level} & \textbf{Shown in Element as} \\
+\midrule
+Course owner & 100 & Admin \\
+TA & 50 & Moderator \\
+The admin bot & 100 & Admin \\
+Students & 0 & Default \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Moderators can remove messages, kick people and invite. Only admins change room settings.
+
+\begin{warning}[Don't remove the bot]
+The bot has to stay in the course space and its rooms with its admin rights. Without them it
+can't invite students, create groups, archive the course or add rooms. Don't kick the bot or
+lower its power level.
+\end{warning}
+
+\section{See your courses}
+
+\begin{itemize}
+  \item \cmd{!course list}: every course you own or are a TA of, with semester and role.
+        Archived courses are marked. Bot admins see all courses.
+  \item \cmd{!course info CS101}: title, semester, owner, TAs, the number of students (joined
+        or invited), the rooms, how many signup links nobody has used yet, and a link to the
+        space.
+\end{itemize}
+
+\section{Teaching assistants}
+\label{sec:tas}
+
+\begin{you}
+!course ta add CS101 @ta.one:matrix.dmi.unibas.ch
+\end{you}
+
+The TA must have an account already. Write the full Matrix ID; in Element you see it by
+clicking a person's name. The bot invites the TA to every room of the course (including Staff
+and the group rooms) and makes them moderator there.
+
+\cmd{!course ta remove CS101 @ta.one:matrix.dmi.unibas.ch} takes the moderator rights away and
+removes the person from staff-only rooms. They stay in the normal rooms like any member.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}Lcc@{}}
+\toprule
+\textbf{In a course \dots} & \textbf{TA} & \textbf{Owner} \\
+\midrule
+see course info, signup links of the course & \faCheck & \faCheck \\
+invite people, create signup links for the course & \faCheck & \faCheck \\
+roster sync, also with \cmd{--remove} & \faCheck & \faCheck \\
+create, fill and post to exercise groups & \faCheck & \faCheck \\
+appoint or remove TAs & -- & \faCheck \\
+add or remove rooms & -- & \faCheck \\
+export the layout as a template & -- & \faCheck \\
+archive, roll over & -- & \faCheck \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Rooms}
+
+\begin{you}
+!room add CS101 "Lab sessions" --topic "Questions about the weekly lab"
+\end{you}
+
+A new room is open to everyone in the course space, like General. With \cmd{--private} only
+staff are invited and nobody else can join, like the Staff room. The topic is optional.
+
+\cmd{!room remove CS101 "Lab sessions"} takes the room out of the course space. The room
+itself still exists with its history and members; it just no longer appears in the course.
+
+\section{The course over a semester}
+\label{sec:lifecycle}
+
+\begin{center}
+\begin{tikzpicture}[
+  phase/.style={draw=accent,fill=accentlight,rounded corners=3pt,font=\footnotesize\sffamily,
+    align=center,minimum height=1.1cm,text width=2.6cm},
+  arr/.style={-{Stealth[length=2.5mm]},accent,thick}]
+  \node[phase] (c) {\textbf{create}\\\cmd{!course create}};
+  \node[phase,right=0.3cm of c] (t) {\textbf{staff}\\\cmd{!course ta add}};
+  \node[phase,right=0.3cm of t] (i) {\textbf{students}\\\cmd{!invite}};
+  \node[phase,right=0.3cm of i] (g) {\textbf{groups}\\\cmd{!groups ...}};
+  \node[phase,below=0.9cm of g] (r) {\textbf{next semester}\\\cmd{!course rollover}};
+  \node[phase,left=0.3cm of r] (a) {\textbf{close}\\\cmd{!course archive}};
+  \draw[arr] (c) -- (t); \draw[arr] (t) -- (i); \draw[arr] (i) -- (g); \draw[arr] (g) -- (r);
+  \draw[arr] (r) -- (a);
+\end{tikzpicture}
+\end{center}
+
+After a rollover, the new course starts again at \enquote{students}: invite the new list.
+
+\subsection*{Rollover: the same course next semester}
+
+\begin{you}
+!course rollover CS101 FS27
+\end{you}
+
+\begin{enumerate}
+  \item The current course is renamed to \cmd{CS101-HS26}, so the code \cmd{CS101} is free
+        again. Its rooms, messages and members stay as they are.
+  \item A new course \cmd{CS101} for FS27 is created with the same rooms and settings, the same
+        owner and the same TAs. Students are not carried over.
+\end{enumerate}
+
+Afterwards invite the new students with \cmd{!invite CS101}, and archive the old course.
+
+\subsection*{Archive: close a course}
+
+\begin{you}
+!course archive CS101-HS26
+\end{you}
+
+After you confirm the plan:
+
+\begin{itemize}
+  \item students can no longer write anywhere in the course; staff still can,
+  \item every room gets the prefix \cmd{[Archiv HS26]},
+  \item the space is moved into the server's archive space, if the admins set one up,
+  \item with \cmd{--kick-students}, students are also removed from all rooms.
+\end{itemize}
+
+Everything stays readable for the members. Use \cmd{--dry-run} to see the plan without
+creating one.
+
+\begin{note}[Deleting a course]
+The bot doesn't delete courses: chat history is often needed later (questions about grades,
+plagiarism cases). If a course was created by mistake, ask a bot admin.
+\end{note}

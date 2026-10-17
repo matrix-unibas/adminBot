@@ -1,0 +1,58 @@
+\chapter{Data and privacy}
+\label{ch:data}
+
+\section{What the bot stores}
+
+The plugin's tables live in maubot's PostgreSQL database (\cmd{plugin_databases.postgres}).
+Migrations are Python code (mautrix \cmd{UpgradeTable}), so the same SQL runs on SQLite in
+the tests.
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}lL@{}}
+\toprule
+\textbf{Table} & \textbf{Content} \\
+\midrule
+\cmd{professor} & the professor allowlist (user ID, added by, when) \\
+\cmd{course}, \cmd{course_staff} & courses (code, title, semester, space ID, owner, archived) and their owner and TAs \\
+\cmd{template} & templates as YAML, personal or global \\
+\cmd{signup_token} & \textbf{SHA-256 hash} of each signup/reset token, user ID, the email address(es), course, creator, expiry, use time \\
+\cmd{pending_invite} & which course a not-yet-registered user joins after signup \\
+\cmd{plan} & proposed plans until confirmed, cancelled or expired (10 minutes) \\
+\cmd{job}, \cmd{job_item} & confirmed plans with per-item state and errors \\
+\cmd{audit} & who did what, when, in which course or bot, how many targets, result \\
+\cmd{bot_request}, \cmd{user_bot}, \cmd{plugin_owner} & professor bot requests (incl.\ the \file{.mbp} until decided), the bots, and which professor owns which plugin ID \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+In memory only (lost on restart, by design): files the bot is waiting for, the rate-limit
+counters of the signup page, and the key for the signup forms' CSRF nonces. Forms opened
+before a restart therefore have to be reloaded.
+
+\section{Personal data}
+
+\begin{itemize}
+  \item \textbf{Email addresses} are kept in the bot's database only while a signup is pending.
+        They are deleted when the link is used, revoked or expires (14 days); expired tokens
+        are cleaned up every five minutes.
+  \item \textbf{Invite jobs} drop the list of new people's emails from the job as soon as the
+        signup links are delivered. An unconfirmed plan holds them until it expires.
+  \item \textbf{\cmd{!groups post}} messages may contain grades; they are removed from the job
+        items after sending.
+  \item \textbf{The audit log} stores user IDs and counts, never email lists or message
+        contents.
+  \item \textbf{In Synapse}, each new account gets its email address(es) bound as threepids.
+        That is deliberate: without a university directory, the email address is the only
+        record of who an account belongs to. With \cmd{identity.bind_threepids: false} only
+        the username remains. The privacy notice of the server should mention this.
+  \item \textbf{Logs}: the plugin never writes tokens, passwords, email lists or command
+        arguments to its log. This matters because maubot's logging is set to DEBUG.
+\end{itemize}
+
+\section{Backups}
+
+\cmd{backup.sh} on the server dumps the Synapse database, the \cmd{maubot} database and,
+once professor bots are set up, the \cmd{userbots} database (infrastructure item I5). The bot's state (courses, staff,
+templates, open links, audit) is therefore in the backup together with the rooms it refers
+to. A restore must bring back both, or course entries point at missing rooms.

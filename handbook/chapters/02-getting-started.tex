@@ -1,0 +1,133 @@
+\chapter{Getting started}
+\label{ch:start}
+
+\section{Before you start}
+
+You need three things:
+
+\begin{enumerate}
+  \item \textbf{An account on \server.} If you don't have one yet, ask a bot admin. You get a
+        personal signup link; it shows your username (taken from your university email
+        address) and asks for a password.
+  \item \textbf{Element.} Use the desktop app, the phone app or the web version. On the login
+        screen, change the homeserver to \server{} (\ui{Edit} next to the server name) and
+        log in with your username and password.
+  \item \textbf{The professor role.} A bot admin adds you with \cmd{!admin prof add}. TAs
+        don't need this: the course owner appoints them.
+\end{enumerate}
+
+\begin{warning}[Keep your recovery key]
+When Element asks you to set up \emph{secure backup}, do it and keep the recovery key in a
+safe place. Course rooms and your chat with the bot are end-to-end encrypted. Without the
+key, a new device or a password reset means you can't read old messages any more.
+\end{warning}
+
+\section{Start a chat with the bot}
+
+\begin{enumerate}
+  \item In Element, click \ui{+} next to \ui{People} (or \ui{Start new chat}).
+  \item Enter \botid{} and start the chat.
+  \item The bot joins within a few seconds. Send \cmd{!whoami}.
+\end{enumerate}
+
+\begin{you}
+!whoami
+\end{you}
+\begin{botreply}
+You are @prof.example:matrix.dmi.unibas.ch.\\
+Roles: professor\\
+Courses: -\\[4pt]
+\cmd{!help} lists the commands these roles allow.
+\end{botreply}
+
+If the bot doesn't answer at all, you don't have a role yet: the bot ignores everyone who
+isn't a professor, TA or admin (\autoref{sec:no-reply}).
+
+\begin{note}[Only in your direct chat]
+The bot accepts commands only in a chat that you and the bot are alone in. Commands can
+contain email addresses and signup links, which must not end up in a shared room. If you
+type a command in a course room, the bot asks you to use the direct chat instead. Don't
+invite other people into your chat with the bot.
+\end{note}
+
+\section{How the bot answers}
+\label{sec:answers}
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[\robot\ The robot reaction]
+    As soon as the bot starts working on your command, it reacts to your message with
+    \robot. The reply follows when the work is done, usually within a few seconds.
+    No reaction means the bot hasn't received the command yet (\autoref{sec:slow}).
+  \item[Plans and \cmd{!confirm}]
+    Commands that change many things at once, such as inviting 200 students, don't act
+    right away. The bot first replies with a \emph{plan}: what it would do, and a short
+    code. Nothing has happened at that point. You run the plan with \cmd{!confirm <code>} or
+    drop it with \cmd{!cancel}. Plans expire after 10~minutes.
+  \item[Jobs]
+    A confirmed plan runs as a \emph{job} in the background. The bot posts one progress
+    message, updates it, and sends a summary at the end, including anything that failed
+    and what to do next. You can keep using other commands meanwhile.
+  \item[Files]
+    Some commands need a file: an email list, a CSV table, a template or a bot plugin.
+    Send the command first; the bot then asks for the file and waits 10~minutes for it.
+    Alternatively, upload the file first and reply to it with the command. If the bot
+    rejects a file, it says why and waits for a corrected one: you only send the file
+    again, not the command.
+\end{description}
+
+\begin{you}
+!invite CS101 --dry-run
+anna.beispiel@stud.unibas.ch
+\end{you}
+\begin{botreply}
+Invite to \textbf{CS101}: 0 existing accounts get an invitation, 1 new people get a signup
+link (as a CSV file after you confirm), 0 entries are not usable.\\[4pt]
+\emph{Dry run: nothing was changed. Send the same command without \cmd{--dry-run} to get a
+plan you can confirm.}
+\end{botreply}
+
+\section{Getting help in the chat}
+
+\begin{itemize}
+  \item \cmd{!help}: all commands you can use, grouped by topic.
+  \item \cmd{!help course}: the commands of one group (here: courses) with a short description.
+  \item \cmd{!help course create}: one command in detail, with arguments, an example, the
+        next steps and who may use it.
+  \item \cmd{!course help} and \cmd{!course create --help} do the same.
+\end{itemize}
+
+When you mistype a command, the bot suggests the closest one (\enquote{Did you mean
+\cmd{!course create}?}). When arguments are missing, it shows the correct form and points to
+the detailed help.
+
+\section{Your first course in six steps}
+\label{sec:quickstart}
+
+\begin{enumerate}
+  \item \textbf{Create the course.}
+\begin{you}
+!course create CS101 "Introduction to Computer Science" --semester HS26
+\end{you}
+        Accept the invitations to the new space and its rooms in Element.
+  \item \textbf{Appoint your TAs} (they need an account already):
+\begin{you}
+!course ta add CS101 @ta.one:matrix.dmi.unibas.ch
+\end{you}
+  \item \textbf{Invite the students.} Paste the email addresses below the command, or send
+        the list from the course platform as a file:
+\begin{you}
+!invite CS101
+anna.beispiel@stud.unibas.ch
+max.muster@stud.unibas.ch
+\end{you}
+        Check the plan and send \cmd{!confirm <code>}.
+  \item \textbf{Send the signup links.} The bot sends you \file{signup-links.csv} with one
+        link per new person. Send them by mail merge (\autoref{sec:mailmerge}).
+  \item \textbf{Create exercise groups} when the groups are known:
+\begin{you}
+!groups create CS101 8
+\end{you}
+        and after \cmd{!confirm}: \cmd{!groups assign CS101 --auto}.
+  \item \textbf{At the end of the semester}: \cmd{!course rollover CS101 FS27} for the next
+        run and \cmd{!course archive CS101-HS26} for the old one (\autoref{sec:lifecycle}).
+\end{enumerate}

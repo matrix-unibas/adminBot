@@ -1,0 +1,123 @@
+\chapter{Your own bots}
+\label{ch:bots}
+
+If you write chat bots, for example for quizzes, reminders or exercise submissions, the
+admin bot can run them for you. You write a \emph{maubot plugin}, send it to the admin bot,
+and after an admin's approval it runs under its own account that you invite into your
+rooms. You never need server access or passwords.
+
+\begin{note}
+This chapter is only relevant if you program your own bot. The plugin framework is
+\emph{maubot}; its documentation is at \url{https://docs.mau.fi/maubot/}. Ask the admins
+whether professor bots are enabled on the server; otherwise the \cmd{!bot} commands answer
+that they are not.
+\end{note}
+
+\section{Build the plugin}
+
+A maubot plugin is a folder with a \file{maubot.yaml} and your Python code. The tool
+\cmd{mbc} (installed with \cmd{pip install maubot}) packs it into an \file{.mbp} file:
+
+\begin{codefile}[maubot.yaml]
+maubot: 0.6.0
+id: ch.unibas.prof.example.quiz
+version: 1.0.0
+license: MIT
+modules:
+  - quiz
+main_class: QuizBot
+config: true
+extra_files:
+  - base-config.yaml
+\end{codefile}
+
+\begin{codefile}[terminal]
+cd my-quiz-plugin
+mbc build          # creates ch.unibas.prof.example.quiz-v1.0.0.mbp
+\end{codefile}
+
+Three rules matter on this server:
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[The plugin ID must be your own]
+    The \cmd{id:} in \file{maubot.yaml} identifies the plugin on the whole server. All bots
+    share one plugin list, so a second plugin with the same ID would replace the first one.
+    The bot therefore remembers who uploaded an ID first and refuses it for everyone else.
+    Use an ID that contains your name, e.g.\ \cmd{ch.unibas.<your.name>.quiz}. Copying an
+    example plugin and keeping its ID (such as \cmd{xyz.maubot.echo}) is the most common
+    reason for a rejected upload.
+  \item[Only packages that come with maubot]
+    Plugins can't install Python packages. If \file{maubot.yaml} lists \cmd{dependencies}
+    that the server doesn't have, the upload is refused, and the reply names them. Ask an
+    admin if you need one.
+  \item[Raise the version for every update]
+    An upload identical to the running one is refused (\enquote{already runs exactly this
+    file}). Change \cmd{version:} and build again.
+\end{description}
+
+\section{Request a bot}
+
+\begin{you}
+!bot create quiz-bot
+\end{you}
+\begin{botreply}
+Now send me the plugin (.mbp file, built with \cmd{mbc build}) here, within 10 minutes (drag
+it into the chat or use the paperclip). \cmd{!cancel} stops waiting.
+\end{botreply}
+
+Then send the \file{.mbp} file. The name is your choice: 1--24 lowercase letters, digits and
+\cmd{-}. Each professor can have up to 3 bots (configurable).
+
+The bot checks the file right away. If something is wrong, it says what and how to fix it,
+and waits for the corrected file. You don't type the command again:
+
+\begin{botreply}
+The plugin ID \cmd{xyz.maubot.echo} is already taken by another bot on this server. All bots
+share one plugin list, and uploading a plugin with the same ID would replace the other one,
+so I refused it.\\
+\textbf{How to fix it:} open \cmd{maubot.yaml} in your plugin folder, change the \cmd{id:} line
+to an ID only you use, e.g.\ \cmd{id: ch.unibas.prof.example.echo}, run \cmd{mbc build} again
+and send me the new .mbp file.\\[4pt]
+Nothing was changed. You don't have to repeat the command: send the corrected plugin (.mbp
+file, built with \cmd{mbc build}) here within 10 minutes, or \cmd{!cancel}.
+\end{botreply}
+
+If the file is fine, the request goes to the bot admins for approval. You get a message in
+your chat with the admin bot when they decide. After approval the bot sets everything up:
+
+\begin{botreply}
+Your bot \textbf{quiz-bot} is running as @bot.prof.example.quiz-bot:matrix.dmi.unibas.ch
+(plugin \cmd{ch.unibas.prof.example.quiz}).\\[4pt]
+\textbf{Next steps}\\
+-- Invite @bot.prof.example.quiz-bot:matrix.dmi.unibas.ch to a room; it joins by itself. \dots
+\end{botreply}
+
+The account is always \cmd{@bot.<your username>.<bot name>}, so everyone can see whose bot
+it is.
+
+\section{Manage your bots}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lL@{}}
+\toprule
+\textbf{Command} & \textbf{What it does} \\
+\midrule
+\cmd{!bot list} & your bots with account, plugin and state \\
+\cmd{!bot info <name>} & running or stopped, plugin version, number of rooms \\
+\cmd{!bot config <name>} & sends the bot's settings (the plugin's config) as a YAML file \\
+\cmd{!bot stop <name>} & stops the bot; it keeps its rooms and settings \\
+\cmd{!bot start <name>} & starts it again \\
+\cmd{!bot update <name>} & then send a new \file{.mbp}: new version (may need approval again) \\
+\cmd{!bot delete <name>} & after \cmd{!confirm}: removes the bot and deactivates its account \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\textbf{Changing the settings:} get the file with \cmd{!bot config quiz-bot}, edit it, upload
+it into the chat, and reply to your uploaded file with \cmd{!bot config quiz-bot}.
+
+\begin{warning}[What a bot can see]
+A bot reads every message in the rooms it is invited to, like any member. Professor bots
+run next to each other on a shared server, so don't put passwords or other secrets into a
+bot's code or settings. Bot admins can stop all professor bots at once in an emergency.
+\end{warning}

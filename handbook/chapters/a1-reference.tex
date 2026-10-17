@@ -1,0 +1,69 @@
+\chapter{Command reference}
+\label{ch:reference}
+
+All commands at a glance. \textbf{Who}: \emph{all} = everyone the bot knows,
+\emph{staff} = course owner and TAs of that course, \emph{prof} = professors,
+\emph{owner} = the course owner, \emph{admin} = bot admins. Admins can always do everything.
+Commands marked \faCheckDouble{} show a plan first and run after \cmd{!confirm}.
+\cmdbreak{!help <command>} shows the details of each one in the chat.
+
+\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{7.6cm}>{\raggedright\arraybackslash}p{1.2cm}>{\raggedright\arraybackslash}p{5.6cm}@{}}
+\toprule
+\textbf{Command} & \textbf{Who} & \textbf{What it does} \\
+\midrule
+\endhead
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Basics}} \\*
+\cmdbreak{!help [<command> [<sub>]]} & all & overview, or details of one command \\
+\cmdbreak{!whoami} & all & your roles and courses \\
+\cmdbreak{!confirm <code>} & all & run your pending plan \\
+\cmdbreak{!cancel} & all & drop your plan, stop waiting for a file \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Courses and rooms}} \\*
+\cmdbreak{!course create <code> "<title>" [--semester HS26] [--template <name>]} & prof & new course space with rooms \\
+\cmdbreak{!course list} & all & your courses \\
+\cmdbreak{!course info <code>} & staff & staff, rooms, numbers, link \\
+\cmdbreak{!course ta add|remove <code> @user} & owner & appoint or remove a TA \\
+\cmdbreak{!course archive <code> [--kick-students] [--dry-run]} \faCheckDouble & owner & read-only for students, [Archiv] prefix \\
+\cmdbreak{!course rollover <code> <semester>} & owner & same layout and staff for a new semester \\
+\cmdbreak{!room add <code> "<name>" [--private] [--topic "..."]} & owner & add a room \\
+\cmdbreak{!room remove <code> "<room>"} & owner & take a room out of the course \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}People and signup links}} \\*
+\cmdbreak{!invite <code> [--dry-run]} + list \faCheckDouble & staff & invitations and signup links \\
+\cmdbreak{!roster sync <code> [--remove] [--dry-run]} + list & staff & compare with a list; \cmd{--remove} \faCheckDouble \\
+\cmdbreak{!signup new <email> [course]} & prof, staff & one signup link (TAs: with course) \\
+\cmdbreak{!signup list [course]} & staff & links not used yet \\
+\cmdbreak{!signup renew <email|@user>} & staff & replace open links with a new one \\
+\cmdbreak{!signup revoke <email|@user>} & staff & make open links stop working \\
+\cmdbreak{!signup guest <email> <name> [course]} & admin & link for a guest without unibas address \\
+\cmdbreak{!signup reset @user} & admin & password-reset link (24 hours) \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Exercise groups}} \\*
+\cmdbreak{!groups create <code> <n>} \faCheckDouble & staff & n private group rooms \\
+\cmdbreak{!groups assign <code> [--auto]} + CSV \faCheckDouble & staff & invite people to their group \\
+\cmdbreak{!groups post <code>} + CSV \faCheckDouble & staff & one message per group or student \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Templates}} \\*
+\cmdbreak{!template export <code> [<name>]} & owner & save the layout and send the YAML \\
+\cmdbreak{!template export --saved <name>} & prof & send a saved template again \\
+\cmdbreak{!template import <name> [--global]} + YAML & prof & load a layout (\cmd{--global}: admin) \\
+\cmdbreak{!template list} & prof & your and global templates \\
+\cmdbreak{!template delete <name> [--global]} & prof & delete a template \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Your own bots}} \\*
+\cmdbreak{!bot create <name>} + .mbp & prof & request a bot (admin approval) \\
+\cmdbreak{!bot update <name>} + .mbp & prof & new plugin version \\
+\cmdbreak{!bot list} & prof & your bots \\
+\cmdbreak{!bot info <name>} & prof & status, version, rooms \\
+\cmdbreak{!bot config <name>} & prof & get or (as reply to a file) set the config \\
+\cmdbreak{!bot start|stop <name>} & prof & start or stop \\
+\cmdbreak{!bot delete <name>} \faCheckDouble & prof & remove the bot, deactivate its account \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Administration}} \\*
+\cmdbreak{!admin prof add|remove|list [@user]} & admin & who is a professor \\
+\cmdbreak{!admin audit [n]} & admin & last n audit entries \\
+\cmdbreak{!admin bots pending|approve <id>|reject <id> [reason]|disable-all} & admin & professor bot requests, kill switch \\
+\bottomrule
+\end{longtable}
+\normalsize

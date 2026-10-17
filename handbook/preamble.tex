@@ -1,0 +1,115 @@
+% Shared preamble for both handbook versions. \iftechnical is defined by the entry file.
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\IfFileExists{sourcesans.sty}{\usepackage[default,semibold]{sourcesans}}{\usepackage[default,semibold]{sourcesanspro}}
+\usepackage[varqu,varl]{inconsolata} % straight quotes in commands: "title", not curly ones
+\usepackage{textcomp}
+\usepackage{microtype}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{fontawesome5}
+\usepackage{csquotes}
+\usepackage[obeyspaces,spaces]{url}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta,positioning,fit,backgrounds,shapes.geometric,calc}
+\usepackage[a4paper,margin=2.5cm,includefoot]{geometry}
+\usepackage{scrlayer-scrpage}
+\usepackage[hidelinks]{hyperref}
+\usepackage{bookmark}
+
+% --- colours -------------------------------------------------------------------------------
+\definecolor{accent}{HTML}{1F6F6B}     % headings, links, frames
+\definecolor{accentlight}{HTML}{E6F2F1}
+\definecolor{ink}{HTML}{2D373C}
+\definecolor{tipbg}{HTML}{EAF5EC}
+\definecolor{tipframe}{HTML}{3B8A4B}
+\definecolor{warnbg}{HTML}{FDF1E4}
+\definecolor{warnframe}{HTML}{C46A12}
+\definecolor{notebg}{HTML}{EEF1F6}
+\definecolor{noteframe}{HTML}{4A6491}
+\definecolor{youbg}{HTML}{F3F4F6}
+\definecolor{botbg}{HTML}{E9F4F3}
+\color{ink}
+
+\hypersetup{colorlinks=true,linkcolor=accent,urlcolor=accent,citecolor=accent,
+  pdfauthor={MARVIN project},pdfsubject={MARVIN admin bot}}
+
+% --- page layout ------------------------------------------------------------------------------
+\setkomafont{disposition}{\sffamily\bfseries\color{accent}}
+\setkomafont{chapter}{\Huge\sffamily\bfseries\color{accent}}
+\setkomafont{part}{\Huge\sffamily\bfseries\color{accent}}
+\setkomafont{pageheadfoot}{\small\sffamily\color{gray}}
+\RedeclareSectionCommand[beforeskip=0pt,afterskip=1.5\baselineskip]{chapter}
+\RedeclareSectionCommand[tocnumwidth=1.9em]{chapter}
+\RedeclareSectionCommand[tocindent=1.9em,tocnumwidth=2.7em]{section}
+\pagestyle{scrheadings}
+\clearpairofpagestyles
+\ihead{\leftmark}
+\ohead{\handbooktitle}
+\cfoot{\pagemark}
+\automark[chapter]{chapter}
+
+\setlist{itemsep=0.2em,topsep=0.3em}
+\setlist[itemize]{label=\textcolor{accent}{\textbullet}}
+\setcounter{tocdepth}{1}
+
+\newcommand{\handbooktitle}{\iftechnical MARVIN admin bot: technical handbook\else MARVIN admin bot: handbook for professors\fi}
+\newcommand{\botversion}{0.2.0}
+
+% --- inline markup ------------------------------------------------------------------------------
+% \cmd{!course create CS101}: a command, path or value exactly as typed (no # or % inside).
+% Built on url.sty, so long paths and IDs may break after / _ . : and at spaces.
+\DeclareUrlCommand\cmd{\def\UrlFont{\upshape\ttfamily}\def\UrlBreaks{\do\/\do\_\do\.\do\:}\def\UrlBigBreaks{}%
+  \def\UrlNoBreaks{\do\(\do\[\do\{\do\<\do\>\do\"\do\-\do\!\do\@\do\|\do\=}}
+\let\cmdbreak\cmd
+\newcommand{\then}{\,$\rightarrow$\,} % menu path: File \then Save As
+\let\file\cmd
+\newcommand{\botid}{\cmd{@adminbot:matrix.dmi.unibas.ch}}
+\newcommand{\server}{\cmd{matrix.dmi.unibas.ch}}
+\newcommand{\robot}{\textcolor{accent}{\faRobot}}
+\newcommand{\ui}[1]{\textsf{\bfseries #1}} % a button or menu in Element
+\newcommand{\who}[1]{\par\smallskip\noindent{\small\textcolor{gray}{\faUser[regular]\enspace\textbf{Who:} #1}}\par}
+\newcommand{\techonly}{\textcolor{gray}{\small\faCogs\enspace}}
+
+% --- boxes -----------------------------------------------------------------------------------
+\tcbset{handbookbox/.style={enhanced,breakable,boxrule=0pt,leftrule=3pt,arc=1pt,
+  left=8pt,right=8pt,top=5pt,bottom=5pt,before skip=8pt,after skip=8pt,fonttitle=\sffamily\bfseries}}
+\newtcolorbox{tip}[1][Tip]{handbookbox,colback=tipbg,colframe=tipframe,
+  title={\faLightbulb[regular]\enspace #1},coltitle=tipframe,attach title to upper={\par\smallskip},
+  title style={fill=tipbg}}
+\newtcolorbox{warning}[1][Careful]{handbookbox,colback=warnbg,colframe=warnframe,
+  title={\faExclamationTriangle\enspace #1},coltitle=warnframe,attach title to upper={\par\smallskip}}
+\newtcolorbox{note}[1][Note]{handbookbox,colback=notebg,colframe=noteframe,
+  title={\faInfoCircle\enspace #1},coltitle=noteframe,attach title to upper={\par\smallskip}}
+
+% A command you send (verbatim, so quotes, @, <, > and line breaks appear exactly as typed).
+\newtcblisting{you}{enhanced,listing only,colback=youbg,colframe=youbg,arc=4pt,boxrule=0pt,
+  left=6pt,right=6pt,top=3pt,bottom=3pt,before skip=6pt,after skip=4pt,
+  overlay={\node[anchor=north east,font=\scriptsize\sffamily\color{gray},inner sep=3pt]
+    at (frame.north east) {you};},
+  listing options={basicstyle=\ttfamily\small,breaklines=true,columns=fullflexible,keepspaces=true,
+    upquote=true,showstringspaces=false,breakindent=1.5em}}
+% A reply from the bot (normal text, may contain \cmd{}).
+\newtcolorbox{botreply}{enhanced,breakable,colback=botbg,colframe=botbg,arc=4pt,boxrule=0pt,
+  left=6pt,right=6pt,top=4pt,bottom=4pt,before skip=4pt,after skip=8pt,fontupper=\small,
+  overlay={\node[anchor=north east,font=\scriptsize\sffamily\color{accent},inner sep=3pt]
+    at (frame.north east) {\faRobot\ adminbot};}}
+
+% Files (CSV, YAML, maubot.yaml) and terminal commands.
+\lstdefinestyle{filestyle}{basicstyle=\ttfamily\small,columns=fullflexible,keepspaces=true,
+  upquote=true,showstringspaces=false,breaklines=true,frame=single,rulecolor=\color{lightgray},
+  framesep=4pt,xleftmargin=4pt,xrightmargin=4pt,backgroundcolor=\color{white}}
+\lstnewenvironment{codefile}[1][]{\lstset{style=filestyle,title={\sffamily\small\color{gray}#1}}}{}
+
+% Tables
+\newcolumntype{L}{>{\raggedright\arraybackslash}X}
+\renewcommand{\arraystretch}{1.25}

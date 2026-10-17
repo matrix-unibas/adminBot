@@ -1,0 +1,90 @@
+\chapter{Introduction}
+\label{ch:intro}
+
+\section{What the admin bot does}
+
+The department runs its own chat server, \server, based on the open \emph{Matrix} protocol.
+You use it with the app \emph{Element} (web, desktop or phone). A course on the server is a
+\emph{space}: a folder of chat rooms that belong together, such as \enquote{Announcements},
+\enquote{Questions} and one room per exercise group.
+
+Setting this up by hand means creating rooms, configuring who may post where, and inviting
+every student one by one. The admin bot \botid{} does this for you. You send it short text
+commands in a direct chat, and it
+
+\begin{itemize}
+  \item creates a course space with all its rooms in one command (\autoref{ch:courses}),
+  \item appoints your teaching assistants (TAs) and gives them the right permissions,
+  \item brings students in: existing accounts get an invitation, new people get a personal
+        signup link that you send them (\autoref{ch:people}),
+  \item creates exercise group rooms, fills them and posts a message per group, for example
+        points for an exercise sheet (\autoref{ch:groups}),
+  \item saves a course layout as a template for the next semester (\autoref{ch:templates}),
+  \item archives a course at the end of the semester and prepares the next one,
+  \item runs your own chat bots, if you write any (\autoref{ch:bots}).
+\end{itemize}
+
+There is no web interface to learn. Everything happens in one chat, and the bot explains
+each command when you ask: \cmd{!help}.
+
+\section{Roles}
+\label{sec:roles}
+
+What you can do depends on your role. Roles are stored in the bot, not in Matrix itself.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lLL@{}}
+\toprule
+\textbf{Role} & \textbf{Who gives it} & \textbf{What it allows} \\
+\midrule
+Professor & a bot admin (\cmd{!admin prof add}) & create courses and own them; appoint TAs; templates; own bots \\
+Course owner & automatic: whoever creates the course & everything in that course, incl. archive and rollover \\
+TA & the course owner (\cmd{!course ta add}) & in that course only: invite people, signup links, roster, groups \\
+Bot admin & the server operators (bot configuration) & everything, in every course; approve bots; password resets; guests \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+A university email address alone gives no rights. Students have no role at all: the bot
+ignores them completely.
+
+\cmd{!whoami} shows your roles, and \cmd{!help} lists only the commands they allow.
+
+\section{How to read this handbook}
+
+Commands are shown as you type them, e.g.\ \cmd{!course info CS101}. In command
+descriptions, placeholders are written in angle brackets and optional parts in square
+brackets:
+
+\begin{center}
+\cmd{!course create <code> "<title>" [--semester HS26]}
+\end{center}
+
+Here you replace \cmd{<code>} and \cmd{<title>} with your own values and may leave out
+\cmd{--semester HS26}. You don't type the brackets.
+
+Conversations with the bot look like this:
+
+\begin{you}
+!course info CS101
+\end{you}
+\begin{botreply}
+\textbf{CS101} Introduction to Computer Science (HS26)\\
+Owner: @prof.example:matrix.dmi.unibas.ch\\
+TAs: @ta.one:matrix.dmi.unibas.ch\\
+Students (joined or invited): 84 \dots
+\end{botreply}
+
+Boxes mark tips, things to be careful about, and background notes:
+
+\begin{tip}
+\cmd{!help <command>} explains any command in the chat, with an example. You don't need this
+handbook open to work with the bot.
+\end{tip}
+
+\iftechnical
+\begin{note}[Technical edition]
+Part~I (this part) is identical to the professors' handbook. Part~II, starting with
+\autoref{ch:architecture}, describes how the bot works inside.
+\end{note}
+\fi

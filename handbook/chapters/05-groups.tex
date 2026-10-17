@@ -1,0 +1,89 @@
+\chapter{Exercise groups}
+\label{ch:groups}
+
+Exercise groups get one private room each. Only the staff and the members of that group are
+in it, so it is the place for group questions and for feedback on exercise sheets. The usual
+order is \textbf{create} \then \textbf{assign} \then \textbf{post}.
+All three commands go through a plan that you confirm with \cmd{!confirm}.
+
+\section{Create group rooms}
+
+\begin{you}
+!groups create CS101 8
+\end{you}
+
+This creates the rooms \enquote{Group 1} to \enquote{Group 8} in the course. Group rooms are
+encrypted and invite-only: the owner and the TAs are invited right away, students only
+through \cmd{!groups assign}. If the course has groups already, the numbering continues
+(\cmd{!groups create CS101 2} then adds Group 9 and Group 10). You can create up to 50
+groups at a time.
+
+\section{Put people into groups}
+
+\subsection*{Automatically}
+
+\begin{you}
+!groups assign CS101 --auto
+\end{you}
+
+Splits all students who have \emph{joined} the course space evenly across the existing
+groups. People who haven't accepted their invitation yet are not included, so wait until
+most students are in.
+
+\subsection*{With a list}
+
+Send \cmd{!groups assign CS101} and then a CSV file:
+
+\begin{codefile}[groups.csv]
+email,group,role
+anna.beispiel@stud.unibas.ch,1,
+max.muster@stud.unibas.ch,1,
+eva.example@stud.unibas.ch,2,
+ta.one@unibas.ch,1,ta
+\end{codefile}
+
+\begin{itemize}
+  \item \cmd{email}: the person's university address. A column \cmd{user} with Matrix IDs
+        works too.
+  \item \cmd{group}: the group number. The group room must exist already.
+  \item \cmd{role} (optional): \cmd{ta} makes the person moderator in that group room, e.g.\
+        the TA who runs the group. Empty or \cmd{student} for everyone else.
+\end{itemize}
+
+Everyone assigned gets an invitation to their group room. Rows the bot can't use (unknown
+group, not a university address) are listed in the plan; the rest is assigned.
+
+\begin{tip}[Excel]
+Save the table with \ui{File} \then \ui{Save As} \then \ui{CSV UTF-8}.
+Both \cmd{,} and \cmd{;} work as separators, and the first row must contain the column names.
+\end{tip}
+
+\section{Post a message per group or per student}
+
+Typical use: points or feedback for an exercise sheet. Send \cmd{!groups post CS101} and then
+a CSV file in one of two forms:
+
+\begin{codefile}[one message per group room]
+group,message
+1,"Sheet 3: 18/20 points, well done"
+2,"Sheet 3: 15/20 points, see the comments on task 2"
+\end{codefile}
+
+\begin{codefile}[one direct message per student]
+email,message
+anna.beispiel@stud.unibas.ch,"Sheet 3: 9/10 points"
+max.muster@stud.unibas.ch,"Sheet 3: 7/10 points"
+\end{codefile}
+
+Put messages that contain commas in quotes. With \cmd{group}, the bot posts the message in
+that group's room. With \cmd{email}, it sends the message to the student in a direct chat with
+the bot.
+
+The bot always shows a preview of the first messages and waits for \cmd{!confirm}. Once the
+messages are sent, they are deleted from the bot's database, because they may contain grades.
+
+\begin{warning}[Check before you confirm]
+Posted messages can't be taken back by the bot. A wrong message in a group room can be
+deleted in Element (staff are moderators there). Messages sent to a student directly can't
+be deleted; send a correction the same way.
+\end{warning}

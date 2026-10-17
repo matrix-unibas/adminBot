@@ -1,0 +1,66 @@
+% Body shared by both versions. Technical-only material is wrapped in \iftechnical ... \fi.
+
+\begin{titlepage}
+  \thispagestyle{empty}
+  \begin{tikzpicture}[remember picture,overlay]
+    \fill[accent] (current page.north west) rectangle ([yshift=-7.5cm]current page.north east);
+    \node[anchor=north west,text=white,font=\sffamily,align=left,text width=15cm]
+      at ([xshift=2.5cm,yshift=-2.2cm]current page.north west)
+      {{\Large MARVIN \textbullet\ DMI Matrix server}\\[0.6cm]
+       {\fontsize{34}{40}\selectfont\bfseries Admin bot handbook}\\[0.4cm]
+       {\LARGE \iftechnical Technical edition: using it and how it works\else For professors and teaching assistants\fi}};
+    \node[anchor=south east,text=white,font=\fontsize{90}{90}\selectfont]
+      at ([xshift=-2.2cm,yshift=-7.0cm]current page.north east) {\faRobot};
+  \end{tikzpicture}
+  \vspace*{7.5cm}
+
+  {\large
+    The admin bot sets up and runs your courses on the department's chat server
+    \server: course spaces and rooms, signup links for students, exercise groups,
+    templates and your own bots. You talk to it in a direct chat in Element, as
+    \botid.
+
+    \bigskip
+    \iftechnical
+    This edition contains the full user guide (Part~I) and describes how the bot works
+    inside (Part~II): its architecture, how it talks to Synapse and maubot, the data it
+    keeps, and its security model. It is meant for bot admins and maintainers.
+    \else
+    This handbook explains every command with examples, the usual order of things in a
+    semester, and what to do when something doesn't work. A separate technical edition
+    describes how the bot works inside.
+    \fi\par}
+
+  \vfill
+  {\sffamily\color{gray}
+  Admin bot version \botversion\hfill \today\\
+  Plugin \cmd{ch.unibas.dmi.marvin.adminbot}}
+\end{titlepage}
+
+\tableofcontents
+
+\iftechnical
+\part{Using the bot}
+\fi
+
+\input{chapters/01-introduction}
+\input{chapters/02-getting-started}
+\input{chapters/03-courses}
+\input{chapters/04-people}
+\input{chapters/05-groups}
+\input{chapters/06-templates}
+\input{chapters/07-bots}
+\input{chapters/08-troubleshooting}
+
+\iftechnical
+\part{How the bot works}
+\input{chapters/t1-architecture}
+\input{chapters/t2-synapse}
+\input{chapters/t3-data}
+\input{chapters/t4-security}
+\input{chapters/t5-operations}
+\fi
+
+\appendix
+\input{chapters/a1-reference}
+\input{chapters/a2-glossary}

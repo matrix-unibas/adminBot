@@ -1,0 +1,84 @@
+\chapter{Course templates}
+\label{ch:templates}
+
+A template stores the \emph{layout} of a course: which rooms exist, in which order, with
+which names, topics and settings, and how many group rooms. It contains no people and no
+messages. Use templates to set up the same kind of course again, or to share a layout.
+
+\section{Save a course as a template}
+
+\begin{you}
+!template export CS101 lecture-with-labs
+\end{you}
+
+The bot saves the layout of \cmd{CS101} as your template \cmd{lecture-with-labs} (without a
+name: the course code) and sends it to you as a \file{.yaml} file. To get a saved template
+again later, even if its course no longer exists:
+\cmd{!template export --saved lecture-with-labs}.
+
+\section{Use a template}
+
+\begin{you}
+!course create CS202 "Algorithms" --template lecture-with-labs
+\end{you}
+
+\cmd{!template list} shows your own templates (\emph{personal}) and the ones bot admins made
+available to everyone (\emph{global}). \cmd{!template delete <name>} deletes one of yours;
+courses created from it are not affected.
+
+\section{Edit a template}
+
+Download it with \cmd{!template export}, change the file in a text editor, and load it again:
+
+\begin{you}
+!template import lecture-with-labs
+\end{you}
+
+Then send the \file{.yaml} file. The bot checks it and, if something is wrong, says what and
+where (e.g.\ \enquote{rooms[2]: unknown keys: titel}); send the corrected file without
+repeating the command. Importing under an existing name replaces that template.
+\cmd{--global} makes a template available to all professors (bot admins only).
+
+\subsection*{The format}
+
+\begin{codefile}[lecture-with-labs.yaml]
+version: 1
+space: {name: "{code} {title} ({semester})", topic: "Lecture with weekly labs"}
+defaults: {join_rule: restricted, encryption: true, history_visibility: shared}
+rooms:
+  - {name: "Announcements", power_levels: {events_default: 50}}
+  - {name: "General"}
+  - {name: "Questions"}
+  - {name: "Lab sessions", topic: "Questions about the weekly lab"}
+  - {name: "Staff", members: staff}
+groups: {count: 0, name: "Group {n}"}
+\end{codefile}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lL@{}}
+\toprule
+\textbf{Key} & \textbf{Meaning} \\
+\midrule
+\cmd{version} & always \cmd{1} \\
+\cmd{space.name} & name of the space; \cmd{{code}}, \cmd{{title}} and \cmd{{semester}} are filled in \\
+\cmd{space.topic} & optional description of the space \\
+\cmd{defaults} & settings for every room unless the room says otherwise (below) \\
+\cmd{rooms} & the rooms in order (1 to 50); each needs a \cmd{name} \\
+\quad\cmd{topic} & optional room description \\
+\quad\cmd{members} & \cmd{all} (default) or \cmd{staff}: only owner and TAs, invite-only \\
+\quad\cmd{join_rule} & \cmd{restricted}: everyone in the course space can join (default);
+                       \cmd{invite}: by invitation only; \cmd{public}: anyone on the server \\
+\quad\cmd{encryption} & \cmd{true} (default) or \cmd{false} \\
+\quad\cmd{history_visibility} & \cmd{shared}: new members see older messages (default);
+                                \cmd{invited} or \cmd{joined}: only from that point on \\
+\quad\cmd{power_levels} & deviations from the standard permissions, e.g.\
+                          \cmd{events_default: 50}: only staff can write \\
+\cmd{groups} & \cmd{count}: group rooms created with the course (0 to 50);
+               \cmd{name}: their name, must contain \cmd{{n}} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Allowed \cmd{power_levels} keys are \cmd{users_default}, \cmd{events_default},
+\cmd{state_default}, \cmd{invite}, \cmd{kick}, \cmd{ban} and \cmd{redact}, each 0--100.
+Students have level 0, TAs 50 and the owner 100.

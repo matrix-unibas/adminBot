@@ -1,0 +1,152 @@
+\chapter{Operations}
+\label{ch:operations}
+
+How to set up the server side (accounts, nginx, databases, the userbots maubot) is
+described step by step in \file{server/docs/admin-bot-setup.md} in the \file{matrix-unibas}
+repository. This chapter covers running the bot.
+
+\section{Configuration}
+
+The instance configuration is edited in the maubot UI (\ui{Instances} \then{} the admin bot
+\then{} config). Defaults come from \file{base-config.yaml}; nothing in the plugin is
+server-specific.
+
+\begin{center}
+\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{5.2cm}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{6.4cm}@{}}
+\toprule
+\textbf{Key} & \textbf{Default} & \textbf{Meaning} \\
+\midrule
+\endhead
+\cmd{admins} & \cmd{[]} & bot admins (full Matrix IDs, quoted) \\
+\cmd{professors} & \cmd{[]} & professors added on every start (in addition to the DB list) \\
+\cmd{server_name} & empty & taken from the bot's user ID if empty \\
+\cmd{audit_room} & empty & room ID of the private audit room (bot must be joined) \\
+\cmd{archive_space} & empty & space that archived courses are added to \\
+\cmd{language} & \cmd{en} & language of all texts (\file{strings/<language>.py}) \\
+\cmd{startup.self_check} & \cmd{true} & run the startup checks \\
+\cmd{identity.allowed_domains} & unibas.ch, stud.unibas.ch & domains that may get accounts; same name = same account \\
+\cmd{identity.bind_threepids} & \cmd{true} & store the email address(es) on the account \\
+\cmd{signup.public_base_url} & empty & public URL of the web app (links are built from it) \\
+\cmd{signup.login_url} & empty & shown after signup and in the link texts \\
+\cmd{signup.token_ttl_days} & 14 & validity of signup links \\
+\cmd{signup.reset_ttl_hours} & 24 & validity of reset links \\
+\cmd{signup.min_password_length} & 12 & minimum password length \\
+\cmd{signup.trusted_proxies} & 127.0.0.1/32, 172.16.0.0/12 & proxies whose \cmd{X-Forwarded-For} is trusted \\
+\cmd{signup.rate_limit.*} & 20 per IP, 300 total & requests per hour on the signup pages \\
+\cmd{invites.mode_existing} & \cmd{invite} & existing accounts: \cmd{invite} or \cmd{force_join} \\
+\cmd{invites.mode_new} & \cmd{force_join} & new accounts after signup \\
+\cmd{power_levels.owner} / \cmd{.ta} & 100 / 50 & power levels of owner and TAs \\
+\cmd{confirm.ttl_minutes} & 10 & lifetime of plans \\
+\cmd{jobs.delay_seconds} & 0.5 & pause between job items \\
+\cmd{uploads.wait_minutes} & 10 & how long the bot waits for a file \\
+\cmd{uploads.max_size_mb} & 10 & maximum size of uploaded lists and templates \\
+\cmd{user_bots.enabled} & \cmd{false} & professor bots on/off \\
+\cmd{user_bots.maubot_url} & \cmd{http://userbots:29316} & management API of the \emph{second} maubot \\
+\cmd{user_bots.username} / \cmd{.password} & adminbot / empty & its login \\
+\cmd{user_bots.homeserver_url} & \cmd{http://synapse:8008} & homeserver URL for bot clients \\
+\cmd{user_bots.require_approval} & \cmd{true} & admins approve requests \\
+\cmd{user_bots.max_per_professor} & 3 & quota \\
+\cmd{user_bots.max_mbp_size_mb} & 10 & maximum package size \\
+\cmd{user_bots.ratelimit_exempt} & \cmd{false} & exempt professor bots from rate limits \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+Saving the config in the UI rebuilds the bot's services and runs the startup check again.
+Changes to the signup rate limits take effect after a restart of the instance.
+
+\section{Startup check}
+
+On every start (and config change) the bot checks its environment and posts the result to
+the audit room:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}llL@{}}
+\toprule
+\textbf{Check} & \textbf{If it fails} & \textbf{Meaning} \\
+\midrule
+\cmd{admin} & commands refused & the bot account has Synapse's server-admin flag \\
+\cmd{ratelimit} & warning & the bot could lift its own rate limit \\
+\cmd{audit_room} & warning & the audit room is configured and the bot is in it \\
+\cmd{postgres} & warning & plugin data is in PostgreSQL (and so in the backup), not SQLite \\
+\cmd{userbots} & \cmd{!bot}, \cmd{!admin bots} refused & professor bots enabled, reachable, and \emph{not} this maubot \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Users who hit a refused command are told that a server check failed and to contact an admin.
+
+\section{Audit log}
+
+Every change is written to the \cmd{audit} table and posted as one line to the audit room.
+\cmd{!admin audit [n]} shows the latest entries. Actions:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}lL@{}}
+\toprule
+\textbf{Area} & \textbf{Actions} \\
+\midrule
+Professors & \cmd{professor.add}, \cmd{professor.remove} \\
+Courses & \cmd{course.create}, \cmd{course.ta.add}, \cmd{course.ta.remove}, \cmd{course.archive}, \cmd{course.rollover}, \cmd{room.add}, \cmd{room.remove} \\
+People & \cmd{invite}, \cmd{roster.remove}, \cmd{signup.create}, \cmd{signup.renew}, \cmd{signup.revoke}, \cmd{signup.redeem}, \cmd{reset.create}, \cmd{reset.redeem} \\
+Groups & \cmd{groups.create}, \cmd{groups.assign}, \cmd{groups.post} \\
+Templates & \cmd{template.export}, \cmd{template.import.*}, \cmd{template.delete.*} \\
+Bots & \cmd{bot.request.*}, \cmd{bot.provision}, \cmd{bot.reject}, \cmd{bot.config}, \cmd{bot.start}, \cmd{bot.stop}, \cmd{bot.delete}, \cmd{bot.disable_all} \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\section{Logs and slow replies}
+\label{sec:timing}
+
+The plugin logs under \cmd{maubot.adminbot.*}. Every command produces one INFO line:
+
+\begin{codefile}[maubot log]
+!help from @prof:matrix.dmi.unibas.ch: reached the bot 18734 ms after it was sent, handled in 412 ms
+\end{codefile}
+
+\begin{itemize}
+  \item \textbf{\enquote{reached the bot} is large}: the delay happens before the plugin runs,
+        in Synapse's delivery through \cmd{/sync}, the bot's sync loop, or decryption. The
+        \robot{} reaction then also arrives late. Look at Synapse's logs for slow \cmd{/sync}
+        requests of \cmd{@adminbot}, at \cmd{mau.client.crypto} warnings in the maubot log,
+        and at the server load.
+  \item \textbf{\enquote{handled in} is large}: the command itself is slow. Most handlers make a
+        few requests to Synapse and some database queries; bulk work runs later as a job.
+  \item Rate limiting causes errors (\cmd{M_LIMIT_EXCEEDED}), not delays.
+\end{itemize}
+
+\begin{codefile}[terminal on the server]
+docker logs matrix-maubot 2>&1 | grep "reached the bot"
+\end{codefile}
+
+\section{Releases}
+
+\begin{enumerate}
+  \item Raise \cmd{version} in \file{maubot.yaml}.
+  \item Run the tests (\cmd{.venv/bin/pytest}); optionally try it against the local dev stack
+        (\file{dev/setup.sh}, see \file{README.md}).
+  \item Build: \cmd{mbc build} creates \file{ch.unibas.dmi.marvin.adminbot-v<version>.mbp}.
+  \item Upload it on the test node in the maubot UI and run the checklist from
+        \file{README.md} (encryption, files, signup page, restart during a job).
+  \item Upload the same file on production.
+\end{enumerate}
+
+\section{Changing the bot}
+
+\begin{itemize}
+  \item A command is a method with the \cmd{@command(name, sub, usage=..., role=...)} decorator
+        in a \cmd{CommandGroup} class in \file{commands/}. The router finds it automatically.
+  \item Every command needs a one-line \cmd{usage.*} text and a detailed \cmd{help.*} text in
+        \file{strings/en.py}; a test fails otherwise. Handlers contain no literal text.
+  \item Every reply should say what happened, why, and what to do next. Errors are raised
+        with a strings key, as \cmd{ValidationError} (bad input), \cmd{NotFound} or
+        \cmd{Forbidden}.
+  \item Bulk work goes through \cmd{propose()} and a job kind registered with
+        \cmd{bot.jobs.register(..., done_hint=...)}.
+  \item Update this handbook (\file{handbook/chapters/}) when a command changes;
+        \cmd{make} in \file{handbook/} builds both versions.
+\end{itemize}

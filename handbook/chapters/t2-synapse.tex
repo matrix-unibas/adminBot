@@ -1,0 +1,163 @@
+\chapter{Connection to Synapse and maubot}
+\label{ch:synapse}
+
+\section{The bot's identity}
+
+The bot's Matrix account \cmd{@adminbot} is the only privileged identity in the system. It
+has Synapse's server-admin flag; professors and TAs never get credentials of any kind.
+maubot holds the account's access token and device (created once with \cmd{mbc auth}, see
+the setup guide). All requests go to \cmd{http://synapse:8008} on the Docker network, so the
+IP allowlist that host nginx applies to \cmd{/_synapse/admin} doesn't affect the bot.
+
+The plugin doesn't need Synapse's registration shared secret: accounts are created with the
+admin API and the bot's own token.
+
+\section{Synapse admin API}
+
+All calls go through mautrix (\cmd{client.api.request} with \cmd{SynapseAdminPath}):
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{6.4cm}L@{}}
+\toprule
+\textbf{Endpoint} & \textbf{Used for} \\
+\midrule
+\cmd{GET /_synapse/admin/v2/users/<id>} & does an account exist; is the bot a server admin (startup) \\
+\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); reactivate a deleted bot's account. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
+\cmd{POST /_synapse/admin/v1/reset_password/<id>} & reset links (\cmd{logout_devices: true}) \\
+\cmd{POST /_synapse/admin/v1/deactivate/<id>} & deleting a professor bot \\
+\cmd{POST /_synapse/admin/v1/users/<id>/override_ratelimit} & the bot exempts itself at startup (0/0 = no limit); optionally professor bots \\
+\cmd{POST /_synapse/admin/v1/join/<room>} & force-join new users into their course after signup \\
+\cmd{GET /_synapse/admin/v1/users/<id>/joined_rooms} & \cmd{!bot info} (room count) \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+A professor bot's access token comes from a normal password login
+(\cmd{POST /_matrix/client/v3/login}) with a random password that is thrown away
+afterwards. The admin \enquote{login as user} API isn't used because it doesn't create a
+real device, which end-to-end encryption needs.
+
+\section{Client-server API}
+
+Everything else is ordinary client-server API as the bot user: \cmd{createRoom} (spaces and
+rooms with their initial state), state events (\cmd{m.space.child}, \cmd{m.room.power_levels},
+names, topics), invites, kicks, member lists, sending messages, reactions and files, and the
+\cmd{m.direct} account data.
+
+\subsection{How rooms are built}
+
+\begin{itemize}
+  \item A course is a space (\cmd{creation_content.type = m.space}) with history visibility
+        \cmd{shared}. Rooms get an \cmd{m.space.parent} pointing at the space; the space gets
+        \cmd{m.space.child} entries with an \cmd{order} key so the order is stable.
+  \item Open course rooms use the join rule \cmd{restricted} with an allow rule for members
+        of the space, so accepting one invitation to the space opens all of them. This needs
+        room version 8 or newer; the server's default (v10 on Synapse 1.157) is used.
+  \item Staff rooms and group rooms are \cmd{invite}-only.
+  \item Rooms are created encrypted (\cmd{m.megolm.v1.aes-sha2}) unless a template says
+        otherwise.
+\end{itemize}
+
+\subsection{Power levels}
+
+Every room the bot creates starts from the same power-level content. Templates only store
+deviations from it.
+
+\begin{center}
+\small
+\begin{tabular}{@{}ll@{\qquad}ll@{}}
+\toprule
+\multicolumn{2}{@{}l}{\textbf{Actions}} & \multicolumn{2}{l@{}}{\textbf{Users}} \\
+\midrule
+\cmd{users_default}, \cmd{events_default} & 0 & course owner & 100 (\cmd{power_levels.owner}) \\
+\cmd{state_default}, \cmd{invite}, \cmd{kick} & 50 & TAs & 50 (\cmd{power_levels.ta}) \\
+\cmd{ban}, \cmd{redact} & 50 & \cmd{@adminbot} & 100 \\
+\cmd{m.room.power_levels}, \cmd{m.room.encryption} & 100 & students & 0 \\
+\cmd{m.space.child}/\cmd{parent}, room tag & 100 & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Archiving raises \cmd{events_default} to the TA level, so only staff can still post.
+Ownership and TA status live in the bot's database (\cmd{course_staff}), never in power
+levels: the power levels follow from the database, not the other way round.
+
+\subsection{The room tag}
+
+Every room and space the bot creates carries a state event of type
+\cmd{ch.unibas.dmi.marvin.room}:
+
+\begin{codefile}[state event ch.unibas.dmi.marvin.room]
+{"kind": "group", "course": "CS101", "group": 3, "members": "staff"}
+\end{codefile}
+
+\cmd{kind} is \cmd{space}, \cmd{room} or \cmd{group}; \cmd{members} is \cmd{all} or
+\cmd{staff}. Templates, groups, archive, TA removal and force-join rely on it, and a room with
+this tag is never treated as a DM.
+
+\subsection{Direct chats}
+\label{sec:dm-rule}
+
+Matrix has no server-side flag for \enquote{direct chat}. The bot treats a room as a DM when
+exactly two users are joined, the bot and the sender, nobody else is invited, and the room
+doesn't carry the bot's room tag. It checks this on every command (no caching), because
+someone could be invited later. The audit room never counts as a DM.
+
+Notifications (bot approved, password reset, professor bot ready) go to the user's most
+recent DM, taken from the bot's \cmd{m.direct} account data, which the router updates for
+every command it accepts. Without one, the bot creates a new encrypted DM.
+
+\section{End-to-end encryption}
+
+The bot's maubot client has its own device and an Olm/Megolm crypto store in maubot's
+database, so it can read encrypted DMs and post into encrypted rooms (\cmd{!groups post},
+notifications). Uploaded files in encrypted rooms are decrypted on download, and files the
+bot sends (CSV, YAML) are encrypted before upload.
+
+\begin{warning}[Crypto pickle key]
+The main maubot still uses the default \cmd{crypto_db_pickle_key} (infrastructure item I3,
+deliberately deferred). Changing it later invalidates the bot's crypto sessions; the client
+then has to be re-created and re-verified. The userbots maubot has its own random key.
+\end{warning}
+
+\section{Rate limits}
+
+At startup the bot sets a rate-limit override for itself, which Synapse applies to all its
+rate limiters. If that fails, the startup check \cmd{ratelimit} reports it, and jobs still
+pause \cmd{jobs.delay_seconds} between items. A rate-limited request fails with \cmd{429
+M_LIMIT_EXCEEDED}; mautrix doesn't retry it, so the user sees an error rather than a delay.
+
+\section{The signup web app}
+
+maubot serves the plugin's web app under \cmd{/_matrix/maubot/plugin/<instance>/}. The
+plugin registers \cmd{GET} and \cmd{POST} for \cmd{/signup} and \cmd{/reset}. Host nginx
+forwards only this prefix (\cmd{location ^~ ...}, which wins over the general \cmd{/_matrix}
+regex) and sets \cmd{X-Forwarded-For}. The public link base comes from the plugin setting
+\cmd{signup.public_base_url}, not from maubot's \cmd{public_url}, which points at the SSH
+tunnel.
+
+\section{The userbots maubot}
+
+Professor bots are managed through the maubot management API of the second maubot
+(\cmd{user_bots.maubot_url}, default \cmd{http://userbots:29316}), with a login whose token
+is cached and renewed on 401:
+
+\begin{center}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{6.4cm}L@{}}
+\toprule
+\textbf{Endpoint (under \cmd{/_matrix/maubot/v1})} & \textbf{Used for} \\
+\midrule
+\cmd{POST /auth/login} & token for the following calls \\
+\cmd{POST /plugins/upload?allow_override=true} & upload a plugin (after the ownership check) \\
+\cmd{POST /client/new}, \cmd{PUT /client/<id>} & the bot account's client (token, device, autojoin) \\
+\cmd{PUT /instance/<id>} & create, start/stop, change plugin or config \\
+\cmd{GET /clients}, \cmd{GET /instances} & startup guard, kill switch \\
+\cmd{DELETE /instance/<id>}, \cmd{/client/<id>}, \cmd{/plugin/<id>} & deleting a bot \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Provisioning runs as a job and is safe to repeat after an interruption: an existing account
+is reset or reactivated, an existing client is updated instead of created.

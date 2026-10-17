@@ -1,0 +1,98 @@
+\chapter{Security}
+\label{ch:security}
+
+The bot holds a server-admin token. Whoever controls the bot controls every account on the
+server. The design therefore keeps that token in one place, limits who can make the bot do
+anything, and makes bulk actions explicit.
+
+\section{Who can make the bot act}
+
+\begin{itemize}
+  \item \textbf{Allowlist.} Only bot admins (instance config \cmd{admins:}), professors (DB
+        allowlist, managed by admins) and course staff (DB, managed by course owners) get any
+        answer. Everyone else is ignored silently, so the bot reveals nothing to students.
+  \item \textbf{No implicit rights.} An email domain, the Synapse server-admin flag, the maubot
+        UI login, and room power levels all grant nothing in the bot. Roles come only from
+        the bot's configuration and database.
+  \item \textbf{One permission check.} Every handler calls \cmd{authz.require(role, course)}.
+        Admin satisfies everything; for a course, \emph{professor} means \enquote{owner of
+        this course} and \emph{TA} means \enquote{owner or TA of this course}.
+  \item \textbf{Only local senders in a real DM.} Commands are accepted only from users on this
+        server (federation is off anyway) and only in a room with exactly the bot and the
+        sender (\autoref{sec:dm-rule}), checked on every command. Links, email lists and
+        tokens therefore never appear in a shared room.
+  \item \textbf{Confirm for bulk and destructive actions.} Plans show what will happen; only
+        the requester can confirm; the role is checked again at confirm time.
+  \item \textbf{Password resets are admin-only.} Whoever issues a reset link can open it. A
+        professor issuing resets could take over students' accounts. Every reset is audited
+        and the affected user is told in a DM.
+\end{itemize}
+
+\section{Signup and reset links}
+
+\begin{itemize}
+  \item Tokens are 32 random bytes (URL-safe). Only their SHA-256 hash is stored, so a
+        database dump doesn't contain usable links.
+  \item Single use: the token is burned atomically before the account is created, and
+        restored only if account creation fails. Signup links expire after 14 days, reset
+        links after 24 hours.
+  \item The username is fixed by the token. The page never lets the user choose it, so the
+        mapping from university email to account can't be bypassed.
+  \item The form carries a CSRF nonce: an HMAC of the token hash with a random key that
+        exists only in memory.
+  \item Rate limits per client IP and globally (\cmd{signup.rate_limit}), in addition to
+        nginx's \cmd{limit_req}. The client IP is taken from \cmd{X-Forwarded-For} only if the
+        connection comes from a configured proxy network (\cmd{signup.trusted_proxies}).
+  \item The pages are minimal HTML without external assets, with a strict
+        Content-Security-Policy, \cmd{no-store} caching, no referrer and no framing. Errors
+        are generic and don't reveal whether a token existed.
+  \item The minimum password length (\cmd{signup.min_password_length}, default 12) is enforced
+        by the bot, because the admin API bypasses Synapse's password policy.
+\end{itemize}
+
+\section{Professor bots}
+\label{sec:why-userbots}
+
+maubot plugins are ordinary Python in the maubot process, without a sandbox. A plugin can
+import maubot's internals and read every client's access token. If professor plugins ran in
+the main maubot, any uploaded plugin could take the admin bot's server-admin token.
+
+\begin{itemize}
+  \item \textbf{Separate maubot.} Professor bots run in \cmd{userbots}: its own container and
+        database, no published port, no registration secret, and only the admin bot as its
+        admin.
+  \item \textbf{Startup guard.} The admin bot lists the target maubot's clients. If its own
+        client appears there, the target is the main maubot, and bot commands are refused.
+  \item \textbf{Package checks.} Size limits (packed and unpacked), \file{maubot.yaml} present
+        and valid, the main module exists, no absolute or \cmd{..} paths, dependencies
+        available in the pinned image. The SHA-256 of the package is recorded and shown to
+        the approving admin.
+  \item \textbf{Plugin ID ownership.} Plugin IDs are global in a maubot, and an upload with an
+        existing ID replaces that plugin for every instance. The bot records the first
+        uploader of each ID and refuses it for everyone else; the admin bot's own ID is
+        reserved.
+  \item \textbf{Approval, quota, kill switch.} Requests need an admin's approval (default),
+        each professor has a quota (default 3), and \cmd{!admin bots disable-all} stops every
+        professor bot.
+  \item \textbf{Unprivileged accounts.} Bot accounts are normal users with \cmd{user_type: bot},
+        named \cmd{@bot.<owner>.<name>}, and not exempt from rate limits unless configured.
+\end{itemize}
+
+\textbf{Remaining risk:} professor bots share one process with \emph{each other}. A
+malicious professor plugin could read another professor bot's token. Those tokens belong to
+unprivileged accounts; approval and the kill switch limit the exposure.
+
+\section{Known gaps}
+
+\begin{itemize}
+  \item \textbf{Open registration (I8).} As long as Synapse's token registration is enabled,
+        someone with a registration token can pick any username, bypassing the email
+        mapping. It should be switched off now that signup links are live.
+  \item \textbf{Default crypto pickle key (I3)} on the main maubot (\autoref{ch:synapse}).
+  \item \textbf{No offboarding.} Nothing tells the server when someone leaves the university;
+        deactivation is manual.
+  \item \textbf{Domain merge assumption.} \cmd{x@unibas.ch} and \cmd{x@stud.unibas.ch} are
+        treated as one person. This is correct only if the university never gives the same
+        name to two people on the two domains (to be confirmed with ITS).
+  \item \textbf{Not yet verified on the test node:} encrypted uploads and the real nginx route.
+\end{itemize}

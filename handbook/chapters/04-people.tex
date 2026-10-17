@@ -1,0 +1,163 @@
+\chapter{People: invitations and signup links}
+\label{ch:people}
+
+\section{How accounts work}
+
+There is no automatic connection between the university's user directory and the chat
+server. Accounts are created through \emph{signup links} that the bot issues and that you (or
+an admin) send to people.
+
+\begin{itemize}
+  \item \textbf{The username comes from the university email address.} The part before the
+        \cmd{@} becomes the username: \cmd{anna.beispiel@stud.unibas.ch} becomes
+        \cmd{@anna.beispiel:matrix.dmi.unibas.ch}. Nobody can choose a different name, so you
+        can always tell who an account belongs to.
+  \item \textbf{\cmd{@unibas.ch} and \cmd{@stud.unibas.ch} are the same person.} The same name
+        on both domains leads to the same account. If one list uses the student address and
+        another the staff address, nobody gets two accounts.
+  \item \textbf{A link works once and expires after 14 days.} When it is used, the account is
+        created with the password the person chooses, and they are added to the course the
+        link was made for.
+  \item \textbf{The bot doesn't send emails.} It gives you the links; you send them, e.g.\ by
+        mail merge from Outlook. Your own address as sender is also more trustworthy for
+        students than an unknown system address.
+\end{itemize}
+
+Only university addresses are accepted. Addresses with unusual characters before the
+\cmd{@} (such as \cmd{+}) are rejected, because they can't be turned into a username safely.
+Guests without a university address need a bot admin (\autoref{sec:guests}).
+
+\section{Invite a whole list: \texttt{!invite}}
+
+\begin{you}
+!invite CS101
+anna.beispiel@stud.unibas.ch
+max.muster@stud.unibas.ch, eva.example@unibas.ch
+someone@gmail.com
+\end{you}
+
+Put the addresses below the command, one per line or separated by commas or spaces. For
+long lists, send just \cmd{!invite CS101} and then the list as a \file{.txt} or \file{.csv}
+file, e.g.\ the participant export of the course platform. The bot picks out everything that
+looks like an email address, so extra columns don't matter.
+
+\begin{botreply}
+Invite to \textbf{CS101}: 1 existing accounts get an invitation, 2 new people get a signup
+link (as a CSV file after you confirm), 1 entries are not usable.\\
+Not usable: someone@gmail.com\\[4pt]
+Nothing has been changed yet. To run this, send \cmd{!confirm k7mq} within 10 minutes. To
+drop it, send \cmd{!cancel}.
+\end{botreply}
+
+After \cmd{!confirm k7mq}:
+
+\begin{itemize}
+  \item People who already have an account get an \textbf{invitation} to the course space.
+        They see it in Element and accept it; then they can join all open course rooms.
+  \item For new people the bot creates \textbf{signup links} and sends you
+        \file{signup-links.csv} with the columns \cmd{email}, \cmd{user_id}, \cmd{link} and
+        \cmd{course}, plus a text you can use as the email.
+  \item When a new person uses their link, the account is created and they are
+        \textbf{added to the course space and its open rooms right away}; they don't have
+        to accept anything.
+\end{itemize}
+
+\begin{tip}
+Use \cmd{--dry-run} to check a list first: you see the counts and the unusable entries
+without creating a plan.
+\end{tip}
+
+\subsection{Send the links by mail merge}
+\label{sec:mailmerge}
+
+Each person must get \emph{their own} link: it creates exactly the account named in it.
+
+\begin{enumerate}
+  \item Save \file{signup-links.csv} from the chat.
+  \item In Word: \ui{Mailings} \then \ui{Start Mail Merge} \then{}
+        \ui{E-mail Messages}, then \ui{Select Recipients} \then \ui{Use an
+        Existing List} and choose the CSV file.
+  \item Write the message (the bot suggests a text) and insert the field \cmd{link} with
+        \ui{Insert Merge Field}.
+  \item \ui{Finish \& Merge} \then \ui{Send E-mail Messages}, with \cmd{email}
+        as the recipient column.
+\end{enumerate}
+
+Other tools work the same way: one message per row, with the \cmd{link} column inserted.
+For a single person, copy the link into a normal email.
+
+\begin{warning}[The links are personal]
+Don't post the CSV file or a link in a course room or forward it to the wrong person: a link
+creates the account named in it for whoever opens it first.
+\end{warning}
+
+\section{Single links: \texttt{!signup}}
+
+For latecomers or a single new TA:
+
+\begin{you}
+!signup new anna.beispiel@stud.unibas.ch CS101
+\end{you}
+\begin{botreply}
+Signup link for \textbf{@anna.beispiel:matrix.dmi.unibas.ch} (anna.beispiel@stud.unibas.ch):\\
+https://matrix.dmi.unibas.ch/\_matrix/maubot/plugin/adminbot/signup?t=\dots\\[4pt]
+Text to forward: \dots
+\end{botreply}
+
+With a course code, the person is added to that course when they sign up. If they already
+have an account, the bot invites them to the course right away instead. Without a course
+code (professors only), the link only creates the account.
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lL@{}}
+\toprule
+\textbf{Command} & \textbf{Use it when} \\
+\midrule
+\cmd{!signup list [course]} & you want to see who hasn't used their link yet (with expiry date) \\
+\cmd{!signup renew <email>} & a link got lost or is about to expire: one new link, old ones stop working \\
+\cmd{!signup revoke <email>} & a link went to the wrong address: all open links stop working \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+Instead of the email you can also give the Matrix ID (\cmd{@anna.beispiel:matrix.dmi.unibas.ch}).
+You can manage links you created yourself and the links of courses where you are staff.
+
+\section{Guests and password resets (admins)}
+\label{sec:guests}
+
+Two things only bot admins can do. Ask them if you need it:
+
+\begin{itemize}
+  \item \textbf{Guests without a university address}, e.g.\ a guest lecturer:
+        \cmd{!signup guest <email> <name> [course]} creates a link for the account
+        \cmd{@guest.<name>}.
+  \item \textbf{Forgotten passwords}: \cmd{!signup reset @user} creates a reset link that
+        works once and expires after 24 hours. Using it logs the person out everywhere,
+        and the bot tells them in a direct chat that their password was reset.
+\end{itemize}
+
+Password resets are admin-only on purpose: whoever has a reset link can take over the
+account.
+
+\section{Compare with the official list: \texttt{!roster sync}}
+
+Over the first weeks, people drop out and others join late. \cmd{!roster sync} compares a
+current participant list with the people in the course space:
+
+\begin{you}
+!roster sync CS101
+\end{you}
+
+Then send the list as a file (or put it below the command, as with \cmd{!invite}).
+
+\begin{botreply}
+Roster \textbf{CS101}: 120 on the list, 112 already in the course, 8 missing, 5 in the course
+but not on the list.\\
+Missing: \dots\ Invite them with \cmd{!invite CS101} and the same list.\\
+Not on the list: \dots\\
+To remove them, send the same command with \cmd{--remove}. Nothing was changed.
+\end{botreply}
+
+Staff (owner and TAs) are never counted or removed. With \cmd{--remove}, the people not on
+the list are removed from the course space and all its rooms, after you confirm the plan.

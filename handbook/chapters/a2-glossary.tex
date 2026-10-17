@@ -1,0 +1,30 @@
+\chapter{Glossary}
+\label{ch:glossary}
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[Matrix] An open protocol for chat. The department's server \server{} speaks it; you
+    can use any Matrix app, Element is the recommended one.
+  \item[Element] The chat app (web, desktop, phone) used with the server.
+  \item[Matrix ID] The full username, e.g.\ \cmd{@anna.beispiel:matrix.dmi.unibas.ch}. Shown
+    when you click a person's name.
+  \item[Room] A chat with a list of members. Can be public within the course, invite-only or
+    a direct chat with one person.
+  \item[Space] A collection of rooms. Each course is a space; students who are in the space
+    can join its open rooms.
+  \item[Direct chat (DM)] A room with exactly two people, e.g.\ you and the admin bot.
+  \item[Power level] A number from 0 to 100 that decides what someone may do in a room.
+    Students 0, TAs 50 (moderator), course owner and bot 100 (admin).
+  \item[End-to-end encryption] Messages are encrypted on the sender's device and can only be
+    read by the members' devices, not by the server. Needs the recovery key on new devices.
+  \item[Recovery key] The key Element gives you when you set up secure backup. With it you can
+    read old encrypted messages on a new device or after a password reset.
+  \item[Signup link] A personal, single-use link that creates one account with a fixed
+    username. Valid for 14 days.
+  \item[Plan] The preview the bot shows before a bulk change. Nothing happens until you send
+    \cmd{!confirm <code>}.
+  \item[Job] A confirmed plan while it runs in the background, with one progress message.
+  \item[Template] A saved course layout (rooms and settings, no people), as a YAML file.
+  \item[maubot, plugin, .mbp] maubot is the bot framework the admin bot and professor bots
+    run on. A plugin is a bot's code; an \file{.mbp} file is the packed plugin.
+  \item[Bot admin] One of the people who run the admin bot. Not the same as a room admin.
+\end{description}
