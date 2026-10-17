@@ -1,8 +1,8 @@
 # MARVIN admin bot
 
-[![tests](https://github.com/Noah-Klaholz/adminBot/actions/workflows/tests.yml/badge.svg)](https://github.com/Noah-Klaholz/adminBot/actions/workflows/tests.yml)
-[![handbook](https://github.com/Noah-Klaholz/adminBot/actions/workflows/handbook.yml/badge.svg)](https://github.com/Noah-Klaholz/adminBot/actions/workflows/handbook.yml)
-[![release](https://img.shields.io/github/v/release/Noah-Klaholz/adminBot?include_prereleases)](https://github.com/Noah-Klaholz/adminBot/releases)
+[![tests](https://github.com/matrix-unibas/adminBot/actions/workflows/tests.yml/badge.svg)](https://github.com/matrix-unibas/adminBot/actions/workflows/tests.yml)
+[![handbook](https://github.com/matrix-unibas/adminBot/actions/workflows/handbook.yml/badge.svg)](https://github.com/matrix-unibas/adminBot/actions/workflows/handbook.yml)
+[![release](https://img.shields.io/github/v/release/matrix-unibas/adminBot?include_prereleases)](https://github.com/matrix-unibas/adminBot/releases)
 
 maubot plugin `ch.unibas.dmi.marvin.adminbot`. The plan, with the design and its reasoning, is in [claude.md](claude.md). The server-side setup (account, nginx, backups, the second maubot for professor bots) is in the server repo: [matrix-unibas/server/docs/admin-bot-setup.md](https://github.com/matrix-unibas/matrix-unibas/blob/main/server/docs/admin-bot-setup.md).
 
@@ -19,7 +19,7 @@ Professors and TAs talk to `@adminbot` in a direct chat. The bot reacts with ðŸ¤
 | Bulk changes | shown as a plan first, run with `!confirm <code>`, dropped with `!cancel` |
 | Help | `!help`, `!help <command> [<sub>]`, `!whoami` |
 
-User documentation: the handbook, as PDF from the latest release ([professors and TAs](https://github.com/Noah-Klaholz/adminBot/releases/latest/download/handbook-professors.pdf), [technical](https://github.com/Noah-Klaholz/adminBot/releases/latest/download/handbook-technical.pdf)); sources in [`handbook/`](handbook/) (see [Handbook](#handbook)).
+User documentation: the handbook, as PDF from the latest release ([professors and TAs](https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-professors.pdf), [technical](https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-technical.pdf)); sources in [`handbook/`](handbook/) (see [Handbook](#handbook)).
 
 ## Layout
 
@@ -62,7 +62,7 @@ Production gets exactly the `.mbp` that passed level 4.
 Python **3.12** (`.python-version` pins it for uv). maubot's standalone mode (level 3) does not run on 3.14.
 
 ```bash
-git clone git@github.com:Noah-Klaholz/adminBot.git && cd adminBot
+git clone git@github.com:matrix-unibas/adminBot.git && cd adminBot
 uv sync --group dev            # or: python3.12 -m venv .venv && .venv/bin/pip install -r requirements-dev.txt
 ```
 
@@ -176,6 +176,6 @@ make professors # or: make technical
 make clean
 ```
 
-The built PDFs aren't committed (`handbook/build/` is gitignored). CI attaches them to every release; the latest ones are always at `https://github.com/Noah-Klaholz/adminBot/releases/latest/download/handbook-professors.pdf` and `.../handbook-technical.pdf`.
+The built PDFs aren't committed (`handbook/build/` is gitignored). CI attaches them to every release; the latest ones are always at `https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-professors.pdf` and `.../handbook-technical.pdf`.
 
 Needs a TeX distribution with `latexmk` (MacTeX or TeX Live). Sections that only belong in the technical version are wrapped in `\iftechnical ... \fi`. When a command changes, update `strings/en.py` *and* the handbook (`handbook/chapters/`).
