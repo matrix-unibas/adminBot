@@ -8,6 +8,7 @@ from mautrix.types import UserID
 
 from ..attachments import Upload, file_from_reply
 from ..authz import Role
+from ..db import UserBot
 from ..errors import Forbidden, ValidationError
 from ..jobs import JobKind
 from ..parsing import Args, decode_text, split_args
@@ -39,17 +40,36 @@ class BotCommands(CommandGroup):
     async def delete_item(self, job, item) -> None:
         await self.manager.delete_item(job, item)
 
-    async def target(self, evt: MessageEvent, a: Args, usage: str) -> tuple[UserID, str]:
-        """`<name>` (own bot) or `<@owner> <name>` (admins)."""
+    async def target(self, evt: MessageEvent, a: Args, usage: str) -> UserBot:
+        """`<name>` (own bot; admins: any bot with that name, if only one owner has it),
+        `<@owner> <name>` or the bot's account `@bot.<owner>.<name>:server`. Bots of other
+        owners: admins only."""
         await self.require(evt, Role.PROFESSOR)
-        if a.get(0, "").startswith("@"):
-            owner = self.user_arg(a.get(0))
-            name = a.require(2, usage)[1]
-            if owner != evt.sender and not self.bot.authz.is_admin(evt.sender):
-                raise Forbidden("err.forbidden_bot")
+        admin = self.bot.authz.is_admin(evt.sender)
+        first = a.require(1, usage)[0]
+        if not first.startswith("@"):
+            return await self.manager.resolve(evt.sender, BotManager.check_name(first), admin)
+        user = self.user_arg(first)
+        if a.get(1) is None:
+            bot = await self.manager.by_user_id(user)
         else:
-            owner, name = evt.sender, a.require(1, usage)[0]
-        return owner, BotManager.check_name(name)
+            if user != evt.sender and not admin:
+                raise Forbidden("err.forbidden_bot")
+            bot = await self.manager.get(user, BotManager.check_name(a.get(1)))
+        if bot.owner != evt.sender and not admin:
+            raise Forbidden("err.forbidden_bot")
+        return bot
+
+    def owner_filter(self, evt: MessageEvent, value: str | None) -> UserID | None:
+        """Whose bots `list`/`delete all` mean: an explicit `@owner` (others: admins only), else
+        all bots for admins (None) and the sender's own for professors."""
+        admin = self.bot.authz.is_admin(evt.sender)
+        if not value:
+            return None if admin else evt.sender
+        owner = self.user_arg(value)
+        if owner != evt.sender and not admin:
+            raise Forbidden("err.forbidden_bot")
+        return owner
 
     @command("bot", "create", usage="usage.bot.create", role=Role.PROFESSOR, needs=NEEDS)
     async def create(self, evt: MessageEvent, args: str) -> None:
@@ -64,9 +84,8 @@ class BotCommands(CommandGroup):
     @command("bot", "update", usage="usage.bot.update", role=Role.PROFESSOR, needs=NEEDS)
     async def update(self, evt: MessageEvent, args: str) -> None:
         usage = t("usage.bot.update")
-        owner, name = await self.target(evt, split_args(args, usage=usage), usage)
-        await self.manager.get(owner, name)
-        await self.with_file(evt, self.on_mbp, {"action": "update", "owner": owner, "name": name},
+        bot = await self.target(evt, split_args(args, usage=usage), usage)
+        await self.with_file(evt, self.on_mbp, {"action": "update", "owner": bot.owner, "name": bot.name},
                              "msg.file_mbp")
 
     async def on_mbp(self, evt: MessageEvent, upload: Upload, context: dict[str, Any]) -> None:
@@ -80,17 +99,19 @@ class BotCommands(CommandGroup):
 
     @command("bot", "list", usage="usage.bot.list", role=Role.PROFESSOR, needs=NEEDS)
     async def list_(self, evt: MessageEvent, args: str) -> None:
+        usage = t("usage.bot.list")
         await self.require(evt, Role.PROFESSOR)
-        owner = None if self.bot.authz.is_admin(evt.sender) else evt.sender
+        owner = self.owner_filter(evt, split_args(args, usage=usage).get(0))
         bots = await self.manager.list_for(owner)
         lines = [f"- `{b.name}` ({b.owner}): {b.user_id}, {b.plugin_id}, {b.state}" for b in bots]
-        await self.reply(evt, "msg.bot_list", bots="\n".join(lines) or "-")
+        await self.reply(evt, "msg.bot_list_all" if owner is None else "msg.bot_list",
+                         bots="\n".join(lines) or "-", count=len(bots), owner=owner or "")
 
     @command("bot", "info", usage="usage.bot.info", role=Role.PROFESSOR, needs=NEEDS)
     async def info(self, evt: MessageEvent, args: str) -> None:
         usage = t("usage.bot.info")
-        owner, name = await self.target(evt, split_args(args, usage=usage), usage)
-        info = await self.manager.info(owner, name)
+        bot = await self.target(evt, split_args(args, usage=usage), usage)
+        info = await self.manager.info(bot.owner, bot.name)
         verified = t("msg.bot_verified") if info.pop("verified") else t("msg.bot_not_verified")
         await self.reply(evt, "msg.bot_info", **info, verified=verified,
                          status=t("msg.bot_running") if info["started"] else t("msg.bot_stopped"))
@@ -99,22 +120,22 @@ class BotCommands(CommandGroup):
     async def config(self, evt: MessageEvent, args: str) -> None:
         """Without a replied-to file: send the config. Replying to a .yaml: replace it."""
         usage = t("usage.bot.config")
-        owner, name = await self.target(evt, split_args(args, usage=usage), usage)
+        bot = await self.target(evt, split_args(args, usage=usage), usage)
         upload = await file_from_reply(self.bot.client, evt, self.max_upload)
         if upload is None:
-            text = await self.manager.get_config(owner, name)
-            await self.reply_file(evt, f"{name}-config.yaml", text.encode("utf-8"), "application/yaml")
+            text = await self.manager.get_config(bot.owner, bot.name)
+            await self.reply_file(evt, f"{bot.name}-config.yaml", text.encode("utf-8"), "application/yaml")
             return
-        await self.manager.set_config(owner, name, decode_text(upload.data))
-        await self.bot.audit.log(evt.sender, "bot.config", bot=name)
-        await self.reply(evt, "msg.bot_config_saved", name=name)
+        await self.manager.set_config(bot.owner, bot.name, decode_text(upload.data))
+        await self.bot.audit.log(evt.sender, "bot.config", bot=bot.name)
+        await self.reply(evt, "msg.bot_config_saved", name=bot.name)
 
     async def _set_started(self, evt: MessageEvent, args: str, started: bool, usage_key: str) -> None:
         usage = t(usage_key)
-        owner, name = await self.target(evt, split_args(args, usage=usage), usage)
-        await self.manager.set_started(owner, name, started)
-        await self.bot.audit.log(evt.sender, "bot.start" if started else "bot.stop", bot=name)
-        await self.reply(evt, "msg.bot_started" if started else "msg.bot_stopped_now", name=name)
+        bot = await self.target(evt, split_args(args, usage=usage), usage)
+        await self.manager.set_started(bot.owner, bot.name, started)
+        await self.bot.audit.log(evt.sender, "bot.start" if started else "bot.stop", bot=bot.name)
+        await self.reply(evt, "msg.bot_started" if started else "msg.bot_stopped_now", name=bot.name)
 
     @command("bot", "start", usage="usage.bot.start", role=Role.PROFESSOR, needs=NEEDS)
     async def start(self, evt: MessageEvent, args: str) -> None:
@@ -127,9 +148,28 @@ class BotCommands(CommandGroup):
     @command("bot", "delete", usage="usage.bot.delete", role=Role.PROFESSOR, needs=NEEDS)
     async def delete(self, evt: MessageEvent, args: str) -> None:
         usage = t("usage.bot.delete")
-        owner, name = await self.target(evt, split_args(args, usage=usage), usage)
-        bot = await self.manager.get(owner, name)
-        summary = t("msg.bot_delete_plan", name=name, user_id=bot.user_id)
-        items = [{"owner": owner, "name": name, "label": name}]
+        a = split_args(args, usage=usage)
+        if (a.get(0) or "").lower() == "all":
+            await self.delete_all(evt, a.get(1))
+            return
+        bot = await self.target(evt, a, usage)
+        summary = t("msg.bot_delete_plan", name=bot.name, user_id=bot.user_id)
+        items = [{"owner": bot.owner, "name": bot.name, "label": bot.name}]
         await self.propose(evt, JobKind.BOT_DELETE.value, summary, items,
-                           {"bot": name, "role": Role.PROFESSOR.value}, dry_run=False)
+                           {"bot": bot.name, "role": Role.PROFESSOR.value}, dry_run=False)
+
+    async def delete_all(self, evt: MessageEvent, owner_arg: str | None) -> None:
+        """`!bot delete all [@owner]`: every professor bot (admins) or all of one owner's. The
+        admin bot itself is never a professor bot, so it can't be in the list."""
+        await self.require(evt, Role.PROFESSOR)
+        owner = self.owner_filter(evt, owner_arg)
+        bots = await self.manager.list_for(owner)
+        if not bots:
+            await self.reply(evt, "msg.bot_delete_none")
+            return
+        lines = "\n".join(f"- `{b.name}` ({b.owner}): {b.user_id}" for b in bots)
+        summary = t("msg.bot_delete_all_plan", count=len(bots), bots=lines)
+        items = [{"owner": b.owner, "name": b.name, "label": f"{b.name} ({b.owner})"} for b in bots]
+        role = Role.PROFESSOR if owner == evt.sender else Role.ADMIN
+        await self.propose(evt, JobKind.BOT_DELETE.value, summary, items,
+                           {"bot": "all", "role": role.value}, dry_run=False)

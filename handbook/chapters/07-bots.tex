@@ -109,9 +109,17 @@ it is.
 \cmd{!bot start <name>} & starts it again \\
 \cmd{!bot update <name>} & then send a new \file{.mbp}: new version (may need approval again) \\
 \cmd{!bot delete <name>} & after \cmd{!confirm}: removes the bot and deactivates its account \\
+\cmd{!bot delete all} & after \cmd{!confirm}: the same for all your bots \\
 \bottomrule
 \end{tabularx}
 \end{center}
+
+\textbf{For bot admins:} the same commands work on every professor's bots. \cmd{!bot list}
+shows all of them (\cmd{!bot list @owner:server} only one person's). Name a bot by its name
+alone, as \cmd{@owner:server <name>} if two people use the same name, or by its account
+\cmd{@bot.<owner>.<name>:server}. \cmd{!bot delete all} removes \emph{every} professor bot
+(\cmd{!bot delete all @owner:server} only one person's); the admin bot itself is never
+affected. To only pause all bots, use \cmd{!admin bots disable-all}.
 
 \textbf{Changing the settings:} get the file with \cmd{!bot config quiz-bot}, edit it, upload
 it into the chat, and reply to your uploaded file with \cmd{!bot config quiz-bot}.

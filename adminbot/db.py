@@ -584,6 +584,16 @@ class Store:
         row = await self.db.fetchrow(q, owner, name)
         return UserBot.from_row(row) if row else None
 
+    async def get_user_bot_by_user_id(self, user_id: UserID) -> UserBot | None:
+        q = "SELECT * FROM user_bot WHERE user_id=$1 AND state<>'deleted'"
+        row = await self.db.fetchrow(q, user_id)
+        return UserBot.from_row(row) if row else None
+
+    async def find_user_bots(self, name: str) -> list[UserBot]:
+        """All live bots with this name, whoever owns them."""
+        q = "SELECT * FROM user_bot WHERE name=$1 AND state<>'deleted' ORDER BY owner"
+        return [UserBot.from_row(row) for row in await self.db.fetch(q, name)]
+
     async def list_user_bots(self, owner: UserID | None = None) -> list[UserBot]:
         if owner is None:
             rows = await self.db.fetch("SELECT * FROM user_bot WHERE state<>'deleted' ORDER BY owner, name")

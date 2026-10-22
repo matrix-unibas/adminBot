@@ -1,6 +1,6 @@
 # MARVIN Admin Bot: Implementation Plan (v7)
 
-Status: **implemented** (phases 0–8). Phases 0–7 run on production; Phase 8 (professor bots) is being rolled out (2026-10-07). Plugin version 0.2.0 (user feedback, help, handbook; 2026-10-16) is not deployed yet; 0.3.0 (self-service password resets, 2026-10-22) builds on it. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help), v7 2026-10-22 (password self-service, notices, recovery key).
+Status: **implemented** (phases 0–8). Phases 0–7 run on production; Phase 8 (professor bots) is being rolled out (2026-10-07). Plugin version 0.2.0 (user feedback, help, handbook; 2026-10-16) is not deployed yet; 0.3.0 (self-service password resets, 2026-10-22) builds on it; 0.3.1 (admins manage all professor bots, 2026-10-22) is a small addition. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help), v7 2026-10-22 (password self-service, notices, recovery key).
 Scope: a new maubot plugin (plugin ID `ch.unibas.dmi.marvin.adminbot`). Planned as `server/admin-bot/`, it now lives in its own repository (`adminBot`); paths below that say `server/admin-bot/` mean the root of that repo. See `README.md` for development and testing.
 Infrastructure changes outside the plugin are listed in §16 (I1–I11); how to apply them is in `server/docs/admin-bot-setup.md` in the `matrix-unibas` repo.
 
@@ -36,8 +36,16 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I11); how to 
 - **Recovery keys can't be restored by the server.** The plugin tells users to save them (signup page, welcome, notices) and explains *Reset identity*. Forcing the setup is an Element client setting served in the well-known file: new infra item I11.
 - Handbook: §4.5 "Passwords and lost keys" (with a text for students), troubleshooting, glossary (reset code vs recovery key), technical chapters (notices, I11, threat model of reset codes).
 
+**Changes in plugin 0.3.1 (2026-10-22): admins manage all professor bots**
+- The admin powers already existed but were hidden: admins pass every role check, and the `!bot` commands accepted `@owner <name>`. Now they are documented in `usage.*`/`help.*`.
+- **Naming a bot** (`<bot>` in all `!bot` commands except `create`): the bot's name (own bot; for admins also another owner's bot, if only one owner has that name, otherwise `err.bot_ambiguous`), `@owner:server <name>`, or the bot's account `@bot.<owner>.<name>:server`. Other owners' bots stay admins only.
+- `!bot list [@owner]`: admins see all professor bots or one owner's; professors only their own.
+- `!bot delete all [@owner]`: one confirm, one `bot_delete` job with an item per bot. For admins *all* means every professor bot (role `admin` on the plan), for professors their own. The admin bot is never in `user_bot`, so it can't be deleted this way.
+- `all` and `help` are reserved bot names (`RESERVED_BOT_NAMES`).
+- No web UI for userbots: changes made there bypass the bot DB (`user_bot`, `plugin_owner`) and leave accounts active. For debugging only, through an SSH tunnel to the container IP (admin-bot-setup.md §7.6).
+
 **Verified** (2026-10-06; v6 additions 2026-10-16; v7 2026-10-22):
-- 120 pytest tests (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks; cross-signing of professor bots. v7: public commands, `!password`, reset codes and `/recover`, per-account lock, held notices).
+- 126 pytest tests (0.3.1: bot management by admins, `delete all`) (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks; cross-signing of professor bots. v7: public commands, `!password`, reset codes and `/recover`, per-account lock, held notices).
 - v6 and v7 have *not* been run against the local Synapse or the test node yet.
 - Against a real local Synapse 1.157 with the plugin from source (`dev/setup.sh --bots`):
   - course create (rooms, join rules, power levels), TA scoping, refusal outside DMs
@@ -406,20 +414,21 @@ groups: {count: 0, name: "Group {n}"}
 
 ### Management commands
 
-Professors (own bots only) and admins:
-- `!bot list`
-- `!bot info <name>`: status, plugin version, verified or not, rooms joined
-- `!bot update <name>` with an attached `.mbp`: same validation; approval again if the hash changed
-- `!bot config <name>`: returns the instance config YAML; with an attached YAML it updates it (`PUT .../instance/<id>` `config`)
-- `!bot start|stop <name>`
-- `!bot delete <name>`:
+Professors (own bots only) and admins (every professor bot). `<bot>` is the bot's name, `@owner:server <name>` or the bot's account `@bot.<owner>.<name>:server` (0.3.1):
+- `!bot list [@owner]`: admins see all professor bots, or one owner's
+- `!bot info <bot>`: status, plugin version, verified or not, rooms joined
+- `!bot update <bot>` with an attached `.mbp`: same validation; approval again if the hash changed
+- `!bot config <bot>`: returns the instance config YAML; with an attached YAML it updates it (`PUT .../instance/<id>` `config`)
+- `!bot start|stop <bot>`
+- `!bot delete <bot>`:
   1. delete the instance and client
   2. deactivate the account through the admin API
   3. delete the plugin if no other instance uses it
+- `!bot delete all [@owner]`: the same for every bot in one confirmed job; admins: all professor bots (never the admin bot)
 
 Admin only:
 - `!admin bots pending|approve|reject`
-- `!admin bots disable-all`: stops every instance on userbots
+- `!admin bots disable-all`: stops every instance on userbots (they stay set up)
 
 **Not in scope**
 - Log streaming to professors (maubot logs come through a global websocket and aren't per-instance).

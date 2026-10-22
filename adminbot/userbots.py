@@ -35,6 +35,8 @@ log = logging.getLogger("maubot.adminbot.userbots")
 
 PLUGIN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,127}$")
 BOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
+# Words the !bot commands read as keywords (`!bot delete all`, `!bot info help`).
+RESERVED_BOT_NAMES = frozenset({"all", "help"})
 OWN_PLUGIN_ID = "ch.unibas.dmi.marvin.adminbot"
 VERIFY_ATTEMPTS = 5
 VERIFY_RETRY_SECONDS = 2
@@ -259,6 +261,8 @@ class BotManager:
         name = (name or "").lower()
         if not BOT_NAME_RE.match(name):
             raise ValidationError("err.bot_name", name=name)
+        if name in RESERVED_BOT_NAMES:
+            raise ValidationError("err.bot_name_reserved", name=name)
         return name
 
     async def check_can_create(self, owner: UserID, name: str) -> None:
@@ -463,6 +467,26 @@ class BotManager:
         bot = await self.bot.store.get_user_bot(owner, name)
         if bot is None:
             raise NotFound("err.bot_unknown", name=name)
+        return bot
+
+    async def resolve(self, sender: UserID, name: str, admin: bool) -> UserBot:
+        """A bot named by `name` alone: the sender's own one; for admins, otherwise the only bot
+        with that name among all owners."""
+        own = await self.bot.store.get_user_bot(sender, name)
+        if own or not admin:
+            return own or await self.get(sender, name)
+        matches = await self.bot.store.find_user_bots(name)
+        if not matches:
+            raise NotFound("err.bot_unknown", name=name)
+        if len(matches) > 1:
+            raise ValidationError("err.bot_ambiguous", name=name, owners=", ".join(b.owner for b in matches),
+                                  user_ids=", ".join(b.user_id for b in matches))
+        return matches[0]
+
+    async def by_user_id(self, user_id: UserID) -> UserBot:
+        bot = await self.bot.store.get_user_bot_by_user_id(user_id)
+        if bot is None:
+            raise NotFound("err.bot_unknown", name=user_id)
         return bot
 
     async def info(self, owner: UserID, name: str) -> dict[str, Any]:

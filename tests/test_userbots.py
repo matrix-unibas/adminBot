@@ -1,13 +1,16 @@
-"""Professor-bot provisioning against a mocked userbots maubot: cross-signing of the bot's device."""
+"""Professor bots against a mocked userbots maubot: cross-signing of the bot's device, and
+managing bots (list, naming other owners' bots, delete, delete all)."""
+import re
 from unittest.mock import AsyncMock
 
 import pytest
 
 from adminbot import userbots
-from adminbot.db import BotRequest
+from adminbot.db import BotRequest, UserBot
+from adminbot.errors import ValidationError
 from adminbot.userbots import BotManager, UserbotsClient, UserbotsError
 
-from .conftest import PROF, SERVER
+from .conftest import ADMIN, PROF, SERVER, wait_for_jobs
 
 BOT_MXID = f"@bot.prof.quiz:{SERVER}"
 
@@ -93,3 +96,97 @@ async def test_client_treats_409_as_existing_keys():
     client.request = AsyncMock(side_effect=crypto_error("boom"))
     with pytest.raises(UserbotsError):
         await client.generate_recovery_key(BOT_MXID)
+
+
+# --- managing bots: !bot list / info / delete ---------------------------------------------------
+
+OTHER = f"@other:{SERVER}"
+
+
+async def add_bot(bot, owner: str, name: str) -> UserBot:
+    localpart = owner[1:].split(":")[0]
+    user_bot = UserBot(owner, name, f"ch.unibas.{localpart}.{name}", f"{localpart}-{name}",
+                       f"@bot.{localpart}.{name}:{SERVER}", "abc", "running")
+    await bot.store.save_user_bot(user_bot)
+    return user_bot
+
+
+@pytest.fixture
+def managed(bot) -> BotManager:
+    """Like `manager`, but replies still reach the chat (ops.send isn't mocked)."""
+    client = AsyncMock(spec=UserbotsClient)
+    client.get_client.return_value = None
+    client.get_instance.return_value = {"started": True, "enabled": True}
+    client.get_plugin.return_value = {"version": "1.0"}
+    bot.synapse.joined_room_count = AsyncMock(return_value=0)
+    bot.synapse.deactivate = AsyncMock()
+    bot.bots = BotManager(bot, client)
+    return bot.bots
+
+
+async def test_list_all_for_admins_and_own_for_professors(bot, chat, managed):
+    await add_bot(bot, PROF, "quiz")
+    await add_bot(bot, OTHER, "poll")
+    everything = (await chat.send("!bot list", sender=ADMIN))[0]
+    assert "All professor bots" in everything and "quiz" in everything and "poll" in everything
+    one_owner = (await chat.send(f"!bot list {OTHER}", sender=ADMIN))[0]
+    assert "poll" in one_owner and "quiz" not in one_owner
+    own = (await chat.send("!bot list", sender=PROF))[0]
+    assert "quiz" in own and "poll" not in own
+    assert "only manage your own bots" in (await chat.send(f"!bot list {OTHER}", sender=PROF))[0]
+
+
+async def test_admins_name_other_bots_three_ways(bot, chat, managed):
+    poll = await add_bot(bot, OTHER, "poll")
+    for target in ("poll", f"{OTHER} poll", poll.user_id):
+        assert "**poll**" in (await chat.send(f"!bot info {target}", sender=ADMIN))[0], target
+    # Professors only ever reach their own bots.
+    assert "no bot called poll" in (await chat.send("!bot info poll", sender=PROF))[0]
+    assert "only manage your own bots" in (await chat.send(f"!bot info {OTHER} poll", sender=PROF))[0]
+    assert "only manage your own bots" in (await chat.send(f"!bot info {poll.user_id}", sender=PROF))[0]
+
+
+async def test_same_name_for_two_owners_needs_the_owner(bot, chat, managed):
+    await add_bot(bot, PROF, "quiz")
+    await add_bot(bot, OTHER, "quiz")
+    reply = (await chat.send("!bot info quiz", sender=ADMIN))[0]
+    assert "Several people" in reply and PROF in reply and OTHER in reply
+    # The sender's own bot wins without asking.
+    assert "**quiz**" in (await chat.send("!bot info quiz", sender=PROF))[0]
+
+
+async def test_admin_deletes_a_single_bot_of_someone_else(bot, chat, managed):
+    poll = await add_bot(bot, OTHER, "poll")
+    plan = (await chat.send("!bot delete poll", sender=ADMIN))[0]
+    code = re.search(r"!confirm (\w+)", plan).group(1)
+    await chat.send(f"!confirm {code}", sender=ADMIN)
+    await wait_for_jobs(bot)
+    assert await bot.store.get_user_bot(OTHER, "poll") is None
+    managed.client.delete_instance.assert_awaited_once_with(poll.instance_id)
+    bot.synapse.deactivate.assert_awaited_once_with(poll.user_id)
+
+
+async def test_delete_all(bot, chat, managed):
+    await add_bot(bot, PROF, "quiz")
+    await add_bot(bot, PROF, "poll")
+    await add_bot(bot, OTHER, "echo")
+    # A professor's "all" means their own bots.
+    plan = (await chat.send("!bot delete all", sender=PROF))[0]
+    assert "**2** bot(s)" in plan and "echo" not in plan
+    assert "only manage your own bots" in (await chat.send(f"!bot delete all {OTHER}", sender=PROF))[0]
+    await chat.send("!cancel", sender=PROF)
+    # An admin's means every professor bot.
+    plan = (await chat.send("!bot delete all", sender=ADMIN))[0]
+    assert "**3** bot(s)" in plan
+    code = re.search(r"!confirm (\w+)", plan).group(1)
+    await chat.send(f"!confirm {code}", sender=ADMIN)
+    await wait_for_jobs(bot)
+    assert await bot.store.list_user_bots() == []
+    assert bot.synapse.deactivate.await_count == 3
+    assert "no bots to delete" in (await chat.send("!bot delete all", sender=ADMIN))[0]
+
+
+async def test_keywords_are_not_bot_names():
+    for name in ("all", "help"):
+        with pytest.raises(ValidationError):
+            BotManager.check_name(name)

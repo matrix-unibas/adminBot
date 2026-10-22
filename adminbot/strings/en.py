@@ -18,7 +18,7 @@ STRINGS: dict[str, str] = {
     "usage.cancel": "`!cancel`: drop your pending plan, or stop me waiting for a file",
     "usage.admin.prof": "`!admin prof add|remove|list [@user]`: who counts as a professor",
     "usage.admin.audit": "`!admin audit [n]`: the last n audit entries",
-    "usage.admin.bots": "`!admin bots pending|approve <id>|reject <id> [reason]|disable-all`: professor bots",
+    "usage.admin.bots": "`!admin bots pending|approve <id>|reject <id> [reason]|disable-all`: bot requests and the kill switch",
     "usage.course.create": '`!course create <code> "<title>" [--semester HS26] [--template <name>]`: new course',
     "usage.course.list": "`!course list`: your courses",
     "usage.course.info": "`!course info <code>`: staff, rooms, numbers of a course",
@@ -43,13 +43,13 @@ STRINGS: dict[str, str] = {
     "usage.signup.renew": "`!signup renew <email|@user>`: new link, the old one stops working",
     "usage.signup.reset": "`!signup reset @user`: password-reset link",
     "usage.bot.create": "`!bot create <name>` + .mbp file: request your own bot",
-    "usage.bot.update": "`!bot update <name>` + .mbp file: new plugin version",
-    "usage.bot.list": "`!bot list`: your bots",
-    "usage.bot.info": "`!bot info <name>`: status, version, rooms",
-    "usage.bot.config": "`!bot config <name>`: download the config; as a reply to a .yaml: replace it",
-    "usage.bot.start": "`!bot start <name>`: start a stopped bot",
-    "usage.bot.stop": "`!bot stop <name>`: stop a bot (it stays set up)",
-    "usage.bot.delete": "`!bot delete <name>`: delete a bot and its account",
+    "usage.bot.update": "`!bot update <bot>` + .mbp file: new plugin version",
+    "usage.bot.list": "`!bot list [@owner]`: your bots (bot admins: all, or one owner's)",
+    "usage.bot.info": "`!bot info <bot>`: status, version, rooms",
+    "usage.bot.config": "`!bot config <bot>`: download the config; as a reply to a .yaml: replace it",
+    "usage.bot.start": "`!bot start <bot>`: start a stopped bot",
+    "usage.bot.stop": "`!bot stop <bot>`: stop a bot (it stays set up)",
+    "usage.bot.delete": "`!bot delete <bot>|all [@owner]`: delete a bot (or all) and its account",
     # --- help overview ------------------------------------------------------------------------
     "help.area.basics": "Basics",
     "help.area.account": "Your account",
@@ -381,35 +381,54 @@ Only give the link to the account owner: whoever opens it can take over the acco
 
 **Example:** `!bot update quiz-bot`, then send the new file.
 
-**Who:** the bot's owner and bot admins.""",
-    "help.bot.list": """Lists your bots with their account, plugin and state. Bot admins see all professor bots.
+**Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
 
-**Who:** professors.""",
+**Who:** the bot's owner and bot admins.""",
+    "help.bot.list": """Lists your bots with their owner, account, plugin and state.
+
+Bot admins see every professor bot; `!bot list @owner:server` shows only that person's. Bots that were set up outside the admin bot (e.g. by hand on the userbots maubot) don't appear.
+
+**Who:** professors and bot admins.""",
     "help.bot.info": """Shows one bot's account, plugin ID and version, whether it is running, whether its device is verified (needed for some encrypted rooms), and in how many rooms it is.
 
 **Example:** `!bot info quiz-bot`
 
-**Who:** the bot's owner and bot admins (admins: `!bot info @owner:server <name>`).""",
+**Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
+
+**Who:** the bot's owner and bot admins.""",
     "help.bot.config": """The bot's settings (the instance config of your plugin, YAML).
 - `!bot config <name>`: I send you the current config as a file.
 - To change it: edit the file, send it here, then reply to your uploaded file with `!bot config <name>`. The bot gets the new settings right away.
 
 **Example:** `!bot config quiz-bot`
 
+**Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
+
 **Who:** the bot's owner and bot admins.""",
     "help.bot.start": """Starts a stopped bot again.
 
 **Example:** `!bot start quiz-bot`
+
+**Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
 
 **Who:** the bot's owner and bot admins.""",
     "help.bot.stop": """Stops a bot. It stays set up and keeps its rooms, but doesn't answer until you start it again with `!bot start`.
 
 **Example:** `!bot stop quiz-bot`
 
+**Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
+
 **Who:** the bot's owner and bot admins.""",
     "help.bot.delete": """Deletes a bot: it is stopped and removed, and its account is deactivated. The plugin is removed too if no other bot uses it. You confirm this with `!confirm`. You can later create a bot with the same name again.
+- `!bot delete <bot>`: one bot
+- `!bot delete all`: all your bots; for bot admins, **every professor bot** on the server
+- `!bot delete all @owner:server`: all bots of one person (bot admins)
+
+The admin bot itself is never deleted this way. To only stop all bots for a moment, use `!admin bots disable-all`.
 
 **Example:** `!bot delete quiz-bot`
+
+**Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
 
 **Who:** the bot's owner and bot admins.""",
     "help.admin.prof": """Manages who counts as a professor (may create courses, templates and bots).
@@ -430,6 +449,8 @@ Only give the link to the account owner: whoever opens it can take over the acco
 - `!admin bots disable-all`: stop every professor bot at once (emergency)
 
 New requests also appear in the audit room with the plugin ID, version, checksum and dependencies.
+
+To see and manage the running bots, use the `!bot` commands; as a bot admin they work on every professor's bots: `!bot list`, `!bot info|start|stop|config|delete <bot>`, `!bot delete all [@owner]`. See `!help bot delete`.
 
 **Who:** bot admins.""",
     # --- errors -------------------------------------------------------------------------------
@@ -494,6 +515,8 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "err.bot_name": "'{name}' can't be a bot name. Use 1-24 lowercase letters, digits and '-', starting with a letter or digit, e.g. quiz-bot.",
     "err.bot_exists": "You already have a bot called {name}. To upload a new version use `!bot update {name}`; to start over, `!bot delete {name}` first.",
     "err.bot_unknown": "There is no bot called {name}. `!bot list` shows your bots.",
+    "err.bot_name_reserved": "'{name}' can't be a bot name: the `!bot` commands use it as a keyword (`!bot delete all`). Pick another name, e.g. {name}-bot.",
+    "err.bot_ambiguous": "Several people have a bot called {name} ({owners}). Name the owner, e.g. `!bot info @owner:server {name}`, or use the bot's account: {user_ids}.",
     "err.bot_quota": "You already have {limit} bots, the maximum. Delete one with `!bot delete <name>`, or ask a bot admin for an exception.",
     "err.bot_unchanged": "{name} already runs exactly this file (version {version}). If you changed the code, raise `version:` in maubot.yaml, run `mbc build` again and send the new .mbp.",
     "err.bot_no_recovery_key": "the account already has cross-signing keys, but I have no recovery key for them",
@@ -617,7 +640,8 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "msg.bot_unverified": "Note: I couldn't verify the bot's device. It works, but Element marks it as unverified, and in encrypted rooms some clients may not let it read messages. The bot admins were told; you don't need to do anything.",
     "msg.bot_unverified_audit": "Couldn't cross-sign professor bot {user_id}: {detail}\nThe bot runs, but unverified. `!bot delete` and `!bot create` try again; see README, *Professor bots and E2EE*.",
     "msg.bot_updated": "Bot **{name}** now runs version {version}.",
-    "msg.bot_list": "**Bots**\n{bots}",
+    "msg.bot_list": "**Bots of {owner}** ({count})\n{bots}",
+    "msg.bot_list_all": "**All professor bots** ({count})\n{bots}\n\nManage one with `!bot info|stop|delete <name>` (or `@owner:server <name>` if two owners use the same name).",
     "msg.bot_info": "**{name}** ({user_id})\nPlugin: `{plugin_id}` v{version}\nStatus: {status}\nVerified: {verified}\nRooms: {rooms}",
     "msg.bot_running": "running",
     "msg.bot_stopped": "stopped (start it with `!bot start`)",
@@ -627,6 +651,8 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "msg.bot_stopped_now": "Bot **{name}** stopped. It keeps its rooms; `!bot start {name}` starts it again.",
     "msg.bot_config_saved": "Config of **{name}** saved. The bot uses it right away.",
     "msg.bot_delete_plan": "Delete bot **{name}**: it is stopped and removed, and its account {user_id} is deactivated.",
+    "msg.bot_delete_all_plan": "Delete **{count}** bot(s): each is stopped and removed, and its account deactivated.\n{bots}",
+    "msg.bot_delete_none": "There are no bots to delete. `!bot list` shows the bots.",
     "msg.bots_disabled_all": "Stopped {count} professor bots. Owners can start theirs again with `!bot start`.",
     # --- signup pages ---------------------------------------------------------------------------
     "web.title": "DMI Matrix account",

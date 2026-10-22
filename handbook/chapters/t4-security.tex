@@ -104,7 +104,8 @@ the main maubot, any uploaded plugin could take the admin bot's server-admin tok
         reserved.
   \item \textbf{Approval, quota, kill switch.} Requests need an admin's approval (default),
         each professor has a quota (default 3), and \cmd{!admin bots disable-all} stops every
-        professor bot.
+        professor bot. \cmd{!bot delete all} removes them and deactivates their accounts; it
+        only sees bots in the \cmd{user_bot} table, which the admin bot itself is never in.
   \item \textbf{Unprivileged accounts.} Bot accounts are normal users with \cmd{user_type: bot},
         named \cmd{@bot.<owner>.<name>}, and not exempt from rate limits unless configured.
   \item \textbf{Recovery keys.} Each bot's cross-signing recovery key is stored in the admin

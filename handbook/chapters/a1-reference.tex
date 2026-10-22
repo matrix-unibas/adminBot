@@ -59,16 +59,18 @@ Commands marked \faCheckDouble{} show a plan first and run after \cmd{!confirm}.
 \multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Your own bots}} \\*
 \cmdbreak{!bot create <name>} + .mbp & prof & request a bot (admin approval) \\
 \cmdbreak{!bot update <name>} + .mbp & prof & new plugin version \\
-\cmdbreak{!bot list} & prof & your bots \\
+\cmdbreak{!bot list [@owner]} & prof & your bots (admin: all, or one owner's) \\
 \cmdbreak{!bot info <name>} & prof & status, version, rooms \\
 \cmdbreak{!bot config <name>} & prof & get or (as reply to a file) set the config \\
 \cmdbreak{!bot start|stop <name>} & prof & start or stop \\
 \cmdbreak{!bot delete <name>} \faCheckDouble & prof & remove the bot, deactivate its account \\
+\cmdbreak{!bot delete all [@owner]} \faCheckDouble & prof & all your bots (admin: every professor bot) \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Administration}} \\*
 \cmdbreak{!admin prof add|remove|list [@user]} & admin & who is a professor \\
 \cmdbreak{!admin audit [n]} & admin & last n audit entries \\
 \cmdbreak{!admin bots pending|approve <id>|reject <id> [reason]|disable-all} & admin & professor bot requests, kill switch \\
+\multicolumn{3}{@{}p{\linewidth}@{}}{\footnotesize Admins can use every \cmd{!bot} command on other professors' bots: \cmd{<name>}, \cmd{@owner:server <name>} or the bot's account \cmd{@bot.<owner>.<name>:server}.} \\
 \bottomrule
 \end{longtable}
 \normalsize

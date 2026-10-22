@@ -122,6 +122,7 @@ Checklist on the test node, which levels 1–3 can't cover:
 - [ ] The audit room receives the startup checks.
 - [ ] The 🤖 reaction appears right after sending a command, and multi-line replies (`!course info`, `!whoami`) show one item per line in Element.
 - [ ] Professor bots (Phase 8, `user_bots.enabled`): `!bot create` with an `.mbp` → approval in the audit room → the bot answers in the professor's room; `!bot delete` deactivates the account and removes the instance. Full steps: admin-bot-setup.md, section 7.5.
+- [ ] Managing bots as an admin (0.3.1): `!bot list` shows every professor bot; `!bot info|stop <name>` works on another professor's bot (by name, `@owner <name>` or the bot's Matrix ID); `!bot delete all` lists all bots, and after `!confirm` every bot account is deactivated and userbots has no instances left, while the admin bot keeps running.
 - [ ] As a student (no role): `!help` lists only `!password` and `!password code`; `!course list` gets no answer; the link from `!password` changes the password and the Element session stays logged in.
 - [ ] `/recover` through nginx (production) or the tunnel: the code from the signup page works once, the page shows a new one, all sessions are logged out, and 5 wrong codes lock the account for the day.
 - [ ] A fresh signup: the success page shows a reset code; after the first login in Element, the welcome DM arrives within a minute and is **readable** (not "Unable to decrypt").
@@ -161,18 +162,18 @@ Releases are made by CI (`.github/workflows/release.yml`), not by hand. Pushing 
 
 ```bash
 # 1. bump `version` in maubot.yaml, commit, push to main
-git tag v0.3.0 && git push origin v0.3.0
+git tag v0.3.1 && git push origin v0.3.1
 gh run watch                                              # or the Actions tab
 
 # 2. test exactly that file on the test node (checklist above)
-gh release download v0.3.0 --pattern '*.mbp'
+gh release download v0.3.1 --pattern '*.mbp'
 
 # 3. checklist passed: make it the latest release, then upload the same file to production
-gh release edit v0.3.0 --prerelease=false --latest
+gh release edit v0.3.1 --prerelease=false --latest
 ```
 
 - A pre-release never counts as *latest*, so the handbook links at the top of this README (`releases/latest/download/...`) always point to a release that passed the test node.
-- A failed release: fix it, delete the tag (`git push --delete origin v0.3.0 && git tag -d v0.3.0`) and the release, if one was created (`gh release delete v0.3.0`), then tag again.
+- A failed release: fix it, delete the tag (`git push --delete origin v0.3.1 && git tag -d v0.3.1`) and the release, if one was created (`gh release delete v0.3.1`), then tag again.
 - Every push to `main` and every PR runs the tests; changes under `handbook/` also build the PDFs (download them from the run's *Artifacts*).
 
 ## Slow replies
