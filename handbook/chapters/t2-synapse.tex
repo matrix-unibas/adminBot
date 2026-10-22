@@ -24,7 +24,7 @@ All calls go through mautrix (\cmd{client.api.request} with \cmd{SynapseAdminPat
 \midrule
 \cmd{GET /_synapse/admin/v2/users/<id>} & does an account exist; is the bot a server admin (startup) \\
 \cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); reactivate a deleted bot's account. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
-\cmd{POST /_synapse/admin/v1/reset_password/<id>} & reset links (\cmd{logout_devices: true}) \\
+\cmd{POST /_synapse/admin/v1/reset_password/<id>} & reset links and reset codes. \cmd{logout_devices} is \cmd{true} for links from an admin and for \cmd{/recover}, \cmd{false} for links from \cmd{!password} (the user proved they hold a session, which keeps its keys) \\
 \cmd{POST /_synapse/admin/v1/deactivate/<id>} & deleting a professor bot \\
 \cmd{POST /_synapse/admin/v1/users/<id>/override_ratelimit} & the bot exempts itself at startup (0/0 = no limit); optionally professor bots \\
 \cmd{POST /_synapse/admin/v1/join/<room>} & force-join new users into their course after signup \\
@@ -104,9 +104,25 @@ exactly two users are joined, the bot and the sender, nobody else is invited, an
 doesn't carry the bot's room tag. It checks this on every command (no caching), because
 someone could be invited later. The audit room never counts as a DM.
 
-Notifications (bot approved, password reset, professor bot ready) go to the user's most
-recent DM, taken from the bot's \cmd{m.direct} account data, which the router updates for
-every command it accepts. Without one, the bot creates a new encrypted DM.
+Notifications (bot approved, password reset, professor bot ready, welcome) go to the user's
+most recent DM, taken from the bot's \cmd{m.direct} account data, which the router updates
+for every command it accepts. Without one, the bot creates a new encrypted DM.
+
+\subsection{Notices held until a device exists}
+\label{sec:notices}
+
+An encrypted message is only readable by the devices that exist when it is sent: the bot
+shares the Megolm room key with the devices of the joined \emph{and invited} members at that
+moment, and Element on a later device can't get the key from the bot. Right after signup the
+user has no device yet, and after a reset with \cmd{logout_devices: true} all devices are
+deleted. A message sent then would show as \enquote{Unable to decrypt} forever.
+
+So the welcome after signup and the notices after a password reset go through
+\file{notices.py}: they are stored in \cmd{pending_notice} and sent once
+\cmd{POST /_matrix/client/v3/keys/query} returns at least one device with uploaded keys for
+the user. That is checked right away (a \cmd{!password} reset keeps the sessions, so it is
+sent at once) and then every minute. Notices older than \cmd{notices.max_age_days} are
+dropped unsent.
 
 \section{End-to-end encryption}
 
@@ -131,11 +147,30 @@ M_LIMIT_EXCEEDED}; mautrix doesn't retry it, so the user sees an error rather th
 \section{The signup web app}
 
 maubot serves the plugin's web app under \cmd{/_matrix/maubot/plugin/<instance>/}. The
-plugin registers \cmd{GET} and \cmd{POST} for \cmd{/signup} and \cmd{/reset}. Host nginx
+plugin registers \cmd{GET} and \cmd{POST} for \cmd{/signup}, \cmd{/reset} and
+\cmd{/recover}. Host nginx
 forwards only this prefix (\cmd{location ^~ ...}, which wins over the general \cmd{/_matrix}
 regex) and sets \cmd{X-Forwarded-For}. The public link base comes from the plugin setting
 \cmd{signup.public_base_url}, not from maubot's \cmd{public_url}, which points at the SSH
 tunnel.
+
+\section{Forcing a recovery key (infrastructure item I11)}
+
+Whether a user saves their recovery key is decided in Element, not on the server. Element
+Web and Desktop read a setting from the server's well-known file: with
+
+\begin{codefile}[/.well-known/matrix/client]
+"io.element.e2ee": {
+  "secure_backup_required": true,
+  "secure_backup_setup_methods": ["key"]
+}
+\end{codefile}
+
+they make every user set up recovery (a recovery key, not a passphrase) right after the first
+login, and the dialog can't be dismissed. The file is served by host nginx, so this change
+belongs to the \cmd{matrix-unibas} repository (setup guide), not to the plugin. Whether
+Element X (the new mobile app) honours it has to be checked on the test node; it asks to set
+up recovery on its own, but may allow skipping it.
 
 \section{The userbots maubot}
 

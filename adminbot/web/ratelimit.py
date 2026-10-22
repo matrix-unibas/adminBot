@@ -58,3 +58,29 @@ class RateLimiter:
             for key in [k for k, v in self.per_ip.items() if not v]:
                 del self.per_ip[key]
         return True
+
+
+class FailureCounter:
+    """Wrong reset codes per account on /recover. After `limit` failures within `window` seconds
+    the account is locked for the rest of the window, whatever IP the tries come from."""
+
+    def __init__(self, limit: int, window: float = 86400.0, clock=time.monotonic) -> None:
+        self.limit = limit
+        self.window = window
+        self.clock = clock
+        self.failures: dict[str, deque[float]] = {}
+
+    def _hits(self, key: str) -> deque[float]:
+        hits = self.failures.setdefault(key, deque())
+        while hits and hits[0] <= self.clock() - self.window:
+            hits.popleft()
+        return hits
+
+    def locked(self, key: str) -> bool:
+        return len(self._hits(key)) >= self.limit
+
+    def fail(self, key: str) -> None:
+        self._hits(key).append(self.clock())
+        if len(self.failures) > 10_000:
+            for k in [k for k, v in self.failures.items() if not v]:
+                del self.failures[k]

@@ -3,6 +3,8 @@
 maubot's own command decorators answer with usage help to anyone, in any room, before a handler
 can check permissions. The bot is a member of every course room, so a single router handles
 all messages instead: unknown senders and non-DM rooms are dealt with before anything is said.
+Local users the bot doesn't know (students) may only use the public commands (!help,
+!password), and only in a DM; everything else from them stays unanswered.
 """
 from __future__ import annotations
 
@@ -48,6 +50,7 @@ class CommandSpec:
     usage: str  # strings key, shown in !help and on errors
     role: Role | None  # who sees it in !help (None = every known user); handlers check for real
     needs: tuple[str, ...]  # startup checks the command depends on
+    public: bool = False  # also for local users the bot doesn't know (students)
 
     @property
     def label(self) -> str:
@@ -61,9 +64,9 @@ class CommandSpec:
 
 
 def command(name: str, sub: str | None = None, *, usage: str, role: Role | None,
-            needs: tuple[str, ...] = ("admin",)) -> Callable[[Handler], Handler]:
+            needs: tuple[str, ...] = ("admin",), public: bool = False) -> Callable[[Handler], Handler]:
     def decorator(func: Handler) -> Handler:
-        func.__adminbot_command__ = CommandSpec(name, sub, usage, role, needs)
+        func.__adminbot_command__ = CommandSpec(name, sub, usage, role, needs, public)
         return func
 
     return decorator
@@ -191,7 +194,7 @@ def describe(e: Exception, spec: CommandSpec | None = None) -> str:
 class CommandRouter:
     """The only Matrix event handler: routes `!command sub args` and uploaded files."""
 
-    ORDER = ["help", "whoami", "confirm", "cancel", "course", "room", "invite", "roster", "groups",
+    ORDER = ["help", "whoami", "password", "confirm", "cancel", "course", "room", "invite", "roster", "groups",
              "template", "signup", "bot", "admin"]
 
     def __init__(self, bot: AdminBot, groups: list[CommandGroup]) -> None:
@@ -209,16 +212,16 @@ class CommandRouter:
         order = {name: i for i, name in enumerate(self.ORDER)}
         self.specs.sort(key=lambda s: order.get(s.name, 99))
         self.names = {spec.name for spec in self.specs}
+        self.public_names = {spec.name for spec in self.specs if spec.public}
 
     def subcommands(self, name: str) -> list[str]:
         return [s.sub for s in self.specs if s.name == name and s.sub]
 
+    def _local_sender(self, sender: UserID) -> bool:
+        return sender != self.bot.client.mxid and is_local_user(sender, self.bot.server_name)
+
     async def _allowed_sender(self, sender: UserID) -> bool:
-        return (
-            sender != self.bot.client.mxid
-            and is_local_user(sender, self.bot.server_name)
-            and await self.bot.authz.is_known(sender)
-        )
+        return self._local_sender(sender) and await self.bot.authz.is_known(sender)
 
     async def _in_dm(self, evt: MessageEvent) -> bool:
         if evt.room_id == self.bot.config["audit_room"]:
@@ -249,7 +252,14 @@ class CommandRouter:
         # The bot is in every course room, where other bots' !commands are normal: unknown
         # names are only answered in a DM, and only to known users.
         known_name = name in self.names
-        if not await self._allowed_sender(evt.sender):
+        if not self._local_sender(evt.sender):
+            return
+        if not await self.bot.authz.is_known(evt.sender):
+            # Students and other users the bot doesn't know: public commands in a DM only. In
+            # course rooms, `!help` is just as likely meant for another bot, so no "please DM me".
+            if name not in self.public_names or not await self._in_dm(evt):
+                return
+            await self._dispatch(evt, name, rest, public_only=True)
             return
         in_dm = await self._in_dm(evt)
         if not known_name:
@@ -259,6 +269,11 @@ class CommandRouter:
         if not in_dm:
             await self.bot.ops.send(evt.room_id, t("err.not_dm", bot=self.bot.client.mxid))
             return
+        await self._dispatch(evt, name, rest)
+
+    async def _dispatch(self, evt: MessageEvent, name: str, rest: str, public_only: bool = False) -> None:
+        """A known command in a DM: acknowledge, then route to help or the handler.
+        public_only: the sender is not staff, so only public subcommands run."""
         await self._ack(evt)
         try:
             await self.bot.ops.remember_dm(evt.sender, evt.room_id)
@@ -284,6 +299,9 @@ class CommandRouter:
             args = rest
         else:
             await self.bot.ops.send(evt.room_id, self.missing_subcommand(name, sub))
+            return
+        if public_only and not spec.public:
+            await self.bot.ops.send(evt.room_id, t("err.forbidden_public", command=spec.label))
             return
         failed = [check for check in spec.needs if check in self.bot.failed_checks]
         if failed:

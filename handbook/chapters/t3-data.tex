@@ -16,7 +16,9 @@ the tests.
 \cmd{professor} & the professor allowlist (user ID, added by, when) \\
 \cmd{course}, \cmd{course_staff} & courses (code, title, semester, space ID, owner, archived) and their owner and TAs \\
 \cmd{template} & templates as YAML, personal or global \\
-\cmd{signup_token} & \textbf{SHA-256 hash} of each signup/reset token, user ID, the email address(es), course, creator, expiry, use time \\
+\cmd{signup_token} & \textbf{SHA-256 hash} of each signup/reset token, user ID, the email address(es), course, creator, expiry, use time. A reset token whose creator is the user themselves came from \cmd{!password} \\
+\cmd{reset_code} & \textbf{SHA-256 hash} of each user's current reset code, and when it was created; one row per account \\
+\cmd{pending_notice} & welcome and password notices waiting until the user has a device (strings key and its parameters, no secrets) \\
 \cmd{pending_invite} & which course a not-yet-registered user joins after signup \\
 \cmd{plan} & proposed plans until confirmed, cancelled or expired (10 minutes) \\
 \cmd{job}, \cmd{job_item} & confirmed plans with per-item state and errors \\
@@ -28,8 +30,8 @@ the tests.
 \end{center}
 
 In memory only (lost on restart, by design): files the bot is waiting for, the rate-limit
-counters of the signup page, and the key for the signup forms' CSRF nonces. Forms opened
-before a restart therefore have to be reloaded.
+counters of the signup page, the count of wrong reset codes per account, and the key for the
+forms' CSRF nonces. Forms opened before a restart therefore have to be reloaded.
 
 \section{Personal data}
 
@@ -43,6 +45,9 @@ before a restart therefore have to be reloaded.
         items after sending.
   \item \textbf{The audit log} stores user IDs and counts, never email lists or message
         contents.
+  \item \textbf{Reset codes} are shown once (signup page, \cmd{!password code} reply, the
+        page after using one) and stored only as a hash. The reply to \cmd{!password code}
+        stays in the user's encrypted DM with the bot.
   \item \textbf{In Synapse}, each new account gets its email address(es) bound as threepids.
         That is deliberate: without a university directory, the email address is the only
         record of who an account belongs to. With \cmd{identity.bind_threepids: false} only

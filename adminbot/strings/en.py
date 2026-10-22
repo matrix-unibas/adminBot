@@ -12,6 +12,8 @@ STRINGS: dict[str, str] = {
     # --- usage (one line each, shown in !help) -----------------------------------------------
     "usage.help": "`!help [<command>]`: this overview, or details and examples for one command",
     "usage.whoami": "`!whoami`: your roles and courses",
+    "usage.password": "`!password`: a link to set a new password for your account",
+    "usage.password.code": "`!password code`: a new reset code, for when you are logged out everywhere",
     "usage.confirm": "`!confirm <code>`: run a plan I proposed",
     "usage.cancel": "`!cancel`: drop your pending plan, or stop me waiting for a file",
     "usage.admin.prof": "`!admin prof add|remove|list [@user]`: who counts as a professor",
@@ -50,6 +52,7 @@ STRINGS: dict[str, str] = {
     "usage.bot.delete": "`!bot delete <name>`: delete a bot and its account",
     # --- help overview ------------------------------------------------------------------------
     "help.area.basics": "Basics",
+    "help.area.account": "Your account",
     "help.area.courses": "Courses and rooms",
     "help.area.people": "People and signup links",
     "help.area.groups": "Exercise groups",
@@ -61,6 +64,7 @@ STRINGS: dict[str, str] = {
     "help.role.ta": "course staff (the course owner and its TAs)",
     "help.role.any": "everyone I know",
     # --- help per command group (shown by !help <command>) ------------------------------------
+    "help.group.password": "**Your password.** Everyone on this server can use these, in a direct chat with me. They only ever affect your own account.",
     "help.group.course": "**Courses.** A course is a Matrix *space* with rooms inside. Whoever creates it owns it; TAs help with people and groups.",
     "help.group.room": "**Rooms** inside a course you own.",
     "help.group.roster": "**Roster**: check a course against an official list of participants.",
@@ -79,7 +83,7 @@ STRINGS: dict[str, str] = {
 
 **Shortcuts:** `!course help` and `!course create --help` work as well.
 
-**Who:** everyone I know.""",
+**Who:** everyone. People without a staff role only see the commands for their own account (`!password`).""",
     "help.whoami": """Shows your Matrix ID, your roles (admin, professor) and the courses where you are staff, with your role there (owner or ta).
 
 Useful when I say you are not allowed to do something: the roles listed here decide what you can do.
@@ -96,6 +100,25 @@ Useful when I say you are not allowed to do something: the roles listed here dec
 **Example:** `!confirm 7f3k`
 
 **Who:** everyone I know (for their own plans).""",
+    "help.password": """Sends you a link to set a new password for **your own** account. Use it when you are still logged in somewhere (e.g. on your phone) but no longer know your password, for example before logging in on a new device.
+
+The link works once and expires after an hour. Your sessions stay logged in, so you keep access to your encrypted messages.
+
+**Logged out everywhere?** Then you can't send me this command. Use your reset code on the reset page instead (see `!help password code`), or ask a bot admin.
+
+**Example:** `!password`
+
+**Who:** everyone, for their own account.""",
+    "help.password.code": """Gives you a new **reset code**. With it you can set a new password yourself on the reset page, even if you are logged out on every device and nobody else is around. You got a first code when you created your account.
+
+- The code works once. After using it, the page shows you a new one.
+- A new code from this command replaces the old one.
+- Keep it **outside Matrix** (password manager, or on paper), next to your Element recovery key: when you need it, you can't read this chat.
+- The reset code is not the same as Element's recovery key. The reset code gives you a new *password*; the recovery key unlocks your *encrypted messages*. Keep both.
+
+**Example:** `!password code`
+
+**Who:** everyone, for their own account.""",
     "help.cancel": """Drops your pending plan (the one waiting for `!confirm`) and stops me from waiting for a file you were asked to send. Nothing is changed.
 
 A job that already started can't be cancelled: it finishes and reports what it did.
@@ -332,7 +355,9 @@ With a course code, the person is added to that course as soon as they sign up. 
 **Example:** `!signup renew anna.beispiel@stud.unibas.ch`
 
 **Who:** whoever created the link, course staff of its course, and bot admins.""",
-    "help.signup.reset": """Creates a password-reset link for an existing account. It works once and expires after 24 hours. When it is used, all the person's sessions are logged out and I tell them in a direct chat that their password was reset.
+    "help.signup.reset": """Creates a password-reset link for an existing account. It works once and expires after 24 hours. When it is used, all the person's sessions are logged out and I tell them in a direct chat that their password was reset (they see the message once they log in again).
+
+Most people don't need this: still logged in somewhere, they can send me `!password` themselves; logged out everywhere, they can use their reset code on the reset page. This command is for people who have neither.
 
 Only give the link to the account owner: whoever opens it can take over the account. Encrypted messages stay readable for them only if they have their recovery key.
 
@@ -424,7 +449,7 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "err.unknown_flag": "I don't know the option {flag}.\nUsage: {usage}",
     "err.bad_user": "'{value}' is not a user of this server. Write the full Matrix ID with @ and server name, e.g. @max.muster:{server} (in Element, click a person's name to see it).",
     "err.user_not_found": "{user_id} has no account on this server. Check the spelling. If the person has never logged in, create a signup link for them first: `!signup new <email>`.",
-    "err.account_exists": "{user_id} already has an account, so they don't need a signup link. To add them to a course use `!signup new <email> <course>` or `!invite <course>` (they get an invitation). If they forgot their password, a bot admin can send a reset link.",
+    "err.account_exists": "{user_id} already has an account, so they don't need a signup link. To add them to a course use `!signup new <email> <course>` or `!invite <course>` (they get an invitation). If they forgot their password, they can reset it themselves (`!help password`); otherwise a bot admin can send a reset link.",
     "err.unknown_course": "There is no course '{code}'. `!course list` shows the codes of your courses.",
     "err.course_exists": "The course code {code} is already taken. Choose another code. For a new semester of an existing course, use `!course rollover {code} <semester>` instead.",
     "err.rollover_exists": "I can't roll over {code}: the code {old_code}, which the current course would be renamed to, is already taken. Rename or delete that course first, or ask a bot admin.",
@@ -445,6 +470,10 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "err.no_open_link": "{user_id} has no open signup link: it was used, revoked or has expired. If they still have no account, create a new link with `!signup new <email>`.",
     "err.no_public_url": "I can't create links because the setting signup.public_base_url is empty. A bot admin has to set it in the bot's instance config. Nothing was changed.",
     "err.reset_self": "I can't reset my own password.",
+    "err.forbidden_public": "`!{command}` is only for course staff. Without a staff role you can use `!password` and `!password code` (see `!help`).",
+    "err.password_bot": "Bot accounts don't need a password: their owner manages them with `!bot`.",
+    "err.password_self_disabled": "Self-service password links are switched off on this server. Ask a bot admin for a reset link.",
+    "err.reset_codes_disabled": "Reset codes are switched off on this server. If you forget your password, send me `!password` from a device where you are still logged in, or ask a bot admin.",
     "err.csv_empty": "The file is empty.",
     "err.csv_missing_column": "The CSV file has no '{column}' column. The first line must name the columns, e.g. `email,group` or `group,message` (see `!help groups assign` and `!help groups post`).",
     "err.csv_role": "Unknown role '{value}' in the CSV file. Use `student`, `ta` or leave it empty.",
@@ -481,6 +510,7 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "msg.help_footer": "**More help:** `!help <command>` explains a command with options and an example, e.g. `!help course create`, `!help invite` or `!help groups`.\nChanges to many people or rooms are shown as a plan first and only run after `!confirm <code>`.",
     "msg.help_group_footer": "Details and an example: `!help {name} <subcommand>`, e.g. `!help {name} {example}`.",
     "msg.help_hint": "Details and examples: `!help {command}`.",
+    "msg.help_public": "**What I can do for you**\nI set up the courses on this server. You can use these commands here, in our direct chat:\n{usages}\n\n`!help password` explains them. Questions about a course? Ask its professor or TAs.",
     "msg.help_unknown": "There is no command `!{name}`. `!help` lists the commands you can use.",
     "msg.help_not_for_you": "`!{command}` is only for {role}. `!help` lists the commands you can use.",
     "msg.unknown_command": "I don't know the command `!{name}`.{hint} `!help` lists the commands you can use.",
@@ -515,7 +545,14 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "msg.invalid_entries": "Not usable: {entries}",
     "msg.check_ok": "Startup check **{check}**: ok",
     "msg.check_failed": "Startup check **{check}** FAILED: {detail}",
-    "msg.password_reset_notice": "Your password was just reset with a link from {admin}. All your sessions were logged out. If you didn't ask for this, contact an admin right away.",
+    "msg.password_reset_notice": "Your password was reset with a link from {admin}, and all your sessions were logged out. If you didn't ask for this, contact a bot admin right away.\n\n{verify_hint}\n\nTo reset your password yourself next time, send me `!password code` and keep the code outside Matrix.",
+    "msg.password_recovered_notice": "Your password was reset with your reset code, and all your sessions were logged out. The reset page showed you a new code; the old one no longer works. If you didn't do this, contact a bot admin right away: someone else has your reset code.\n\n{verify_hint}",
+    "msg.password_self_notice": "Your password was changed with a link you asked me for. Your sessions stay logged in. If you didn't do this, send me `!password` to set a new one and tell a bot admin.",
+    "msg.verify_hint": "**Element asks you to confirm or verify this login?** Enter your recovery key (or confirm from another device that is still logged in). If you have neither, choose *Can't confirm?* and then *Reset identity* (the exact words differ a little between Element versions). You can then chat normally again, and people see you as verified. Encrypted messages from before can't be read any more: no one, not even the server, can recover them without the key. This time, save the new recovery key Element gives you.",
+    "msg.welcome": "**Welcome to the DMI Matrix server!** I'm the admin bot. I set up the courses here; your professors and TAs talk to me, and you can too, for your account.\n\n**1. Save your recovery key.** Element asks you to set up *recovery* (or *secure backup*). Do it, and keep the recovery key in a password manager or on paper. Without it, after a new login or a password reset you can't read older encrypted messages, and nobody can get them back for you.\n{reset_code_hint}\n**Forgot your password, but still logged in somewhere?** Send me `!password`.\n\n`!help` lists what I can do for you.",
+    "msg.welcome_reset_code": "**2. Keep your reset code.** The signup page showed you a reset code. With it you can set a new password yourself at {url}, even if you are logged out everywhere. Lost it? Send me `!password code` for a new one.\n",
+    "msg.password_link_self": "Here is a link to set a new password for **{user_id}** (valid {minutes} minutes, works once):\n{link}\n\nYour sessions stay logged in. Don't forward it: whoever opens it can change your password. If you didn't ask for it, just ignore it.",
+    "msg.reset_code": "Your new reset code for **{user_id}**:\n\n`{code}`\n\nIt replaces any earlier code. With it you can set a new password at {url}, even if you are logged out everywhere. It works once; afterwards the page shows you a new one.\n\n**Keep it outside Matrix** (password manager, or on paper), next to your Element recovery key: when you need it, you can't read this chat. Anyone with the code and your username can change your password.",
     # admin
     "msg.prof_list": "**Professors**\n{users}",
     "msg.prof_added": "{user_id} is now a professor. They can create courses now; tell them to send me `!help` in a direct chat.",
@@ -602,6 +639,17 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "web.submit.signup": "Create account",
     "web.submit.reset": "Set password",
     "web.reset.warning": "All your sessions will be logged out. Messages in encrypted rooms stay readable only if you have your recovery key.",
+    "web.reset.warning_self": "You asked for this link yourself, so your sessions stay logged in.",
+    "web.recover.title": "Reset your password",
+    "web.recover.intro": "Forgot your password? Enter your username and the reset code you saved when you created your account (or got with !password code).",
+    "web.recover.username_hint": "Your username, e.g. anna.beispiel, or your university email address.",
+    "web.recover.code": "Reset code",
+    "web.recover.warning": "All your sessions will be logged out. Afterwards you get a new reset code; the old one stops working.",
+    "web.recover.no_code": "No reset code? If you are still logged in somewhere, send !password to the admin bot. Otherwise ask a bot admin for a reset link.",
+    "web.reset_code.title": "Your reset code",
+    "web.reset_code.hint": "Save this code now, outside Matrix (password manager, or on paper). With it you can set a new password yourself if you ever forget yours, on the reset page of this server. It is shown only once; the admin bot gives you a new one with !password code.",
+    "web.done_recovery_key": "When you log in, Element asks you to set up recovery (secure backup). Do it, and keep the recovery key next to your reset code. Without it, a new login or a password reset means you can't read older encrypted messages.",
+    "web.done_verify": "When you log in, Element asks you to confirm this login. Enter your recovery key. If you don't have it any more, choose \"Can't confirm?\" and then \"Reset identity\": you can use Matrix normally again, but older encrypted messages stay unreadable. Then save the new recovery key Element shows you.",
     "web.done": "Your account is ready.",
     "web.done_reset": "Your new password is set.",
     "web.username": "Username",
@@ -612,4 +660,7 @@ New requests also appear in the audit room with the plugin ID, version, checksum
     "web.error.password_short": "The password must have at least {n} characters.",
     "web.error.rate_limited": "Too many attempts. Please try again later.",
     "web.error.generic": "Something went wrong. Please try again later.",
+    "web.error.recover_invalid": "That username and reset code don't match, or there were too many wrong tries for this account today. Check the code (letters and digits, the dashes don't matter) and try again. If you no longer have a valid code, ask a bot admin for a reset link.",
+    "web.error.recover_expired": "This form has expired. Please open the reset page again.",
+    "web.error.recover_disabled": "Reset codes are not used on this server. Ask a bot admin for a reset link.",
 }

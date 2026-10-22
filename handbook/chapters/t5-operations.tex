@@ -30,10 +30,15 @@ server-specific.
 \cmd{signup.public_base_url} & empty & public URL of the web app (links are built from it) \\
 \cmd{signup.login_url} & empty & shown after signup and in the link texts \\
 \cmd{signup.token_ttl_days} & 14 & validity of signup links \\
-\cmd{signup.reset_ttl_hours} & 24 & validity of reset links \\
+\cmd{signup.reset_ttl_hours} & 24 & validity of reset links from an admin \\
 \cmd{signup.min_password_length} & 12 & minimum password length \\
 \cmd{signup.trusted_proxies} & 127.0.0.1/32, 172.16.0.0/12 & proxies whose \cmd{X-Forwarded-For} is trusted \\
-\cmd{signup.rate_limit.*} & 20 per IP, 300 total & requests per hour on the signup pages \\
+\cmd{signup.rate_limit.*} & 20 per IP, 300 total & requests per hour on the signup, reset and recover pages \\
+\cmd{password.self_service} & \cmd{true} & \cmd{!password}: reset link for the own account \\
+\cmd{password.reset_codes} & \cmd{true} & reset codes (signup page, \cmd{!password code}, \cmd{/recover}); off: \cmd{/recover} answers 404 \\
+\cmd{password.self_ttl_minutes} & 60 & validity of links from \cmd{!password} \\
+\cmd{password.max_code_attempts} & 5 & wrong reset codes per account per 24 hours before \cmd{/recover} refuses that account \\
+\cmd{notices.max_age_days} & 30 & held notices (welcome, reset) are dropped after this if the user never logs in \\
 \cmd{invites.mode_existing} & \cmd{invite} & existing accounts: \cmd{invite} or \cmd{force_join} \\
 \cmd{invites.mode_new} & \cmd{force_join} & new accounts after signup \\
 \cmd{power_levels.owner} / \cmd{.ta} & 100 / 50 & power levels of owner and TAs \\
@@ -91,7 +96,8 @@ Every change is written to the \cmd{audit} table and posted as one line to the a
 \midrule
 Professors & \cmd{professor.add}, \cmd{professor.remove} \\
 Courses & \cmd{course.create}, \cmd{course.ta.add}, \cmd{course.ta.remove}, \cmd{course.archive}, \cmd{course.rollover}, \cmd{room.add}, \cmd{room.remove} \\
-People & \cmd{invite}, \cmd{roster.remove}, \cmd{signup.create}, \cmd{signup.renew}, \cmd{signup.revoke}, \cmd{signup.redeem}, \cmd{reset.create}, \cmd{reset.redeem} \\
+People & \cmd{invite}, \cmd{roster.remove}, \cmd{signup.create}, \cmd{signup.renew}, \cmd{signup.revoke}, \cmd{signup.redeem}, \cmd{reset.create}, \cmd{reset.redeem}, \cmd{reset.recover} \\
+Own account & \cmd{password.self}, \cmd{password.code} \\
 Groups & \cmd{groups.create}, \cmd{groups.assign}, \cmd{groups.post} \\
 Templates & \cmd{template.export}, \cmd{template.import.*}, \cmd{template.delete.*} \\
 Bots & \cmd{bot.request.*}, \cmd{bot.provision}, \cmd{bot.reject}, \cmd{bot.config}, \cmd{bot.start}, \cmd{bot.stop}, \cmd{bot.delete}, \cmd{bot.disable_all} \\

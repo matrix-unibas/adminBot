@@ -8,8 +8,9 @@ situations where that isn't enough, or where the problem is outside the bot.
 \label{sec:no-reply}
 
 \begin{itemize}
-  \item \textbf{You have no role yet.} The bot silently ignores everyone who isn't a
-        professor, TA or bot admin, so that students can't probe it. Ask a bot admin to add
+  \item \textbf{You have no role yet.} For everyone who isn't a professor, TA or bot admin,
+        the bot only answers \cmd{!help}, \cmd{!password} and \cmd{!password code}, and
+        ignores all other commands, so that students can't probe it. Ask a bot admin to add
         you as professor, or the course owner to add you as TA.
   \item \textbf{The command doesn't start with \cmd{!}}, or there is something before it.
         Commands must be the first thing in the message.
@@ -74,8 +75,22 @@ Watch for the \robot{} reaction:
     \cmd{!signup renew <email>} gives a new link. If the link was used already, they have an
     account: they log in with the username shown on the link page and their password.
   \item[\enquote{I forgot my password.}]
-    Only a bot admin can create a reset link (\cmd{!signup reset}). Point the student to the
-    admins.
+    Still logged in somewhere (e.g.\ on the phone)? Send \cmd{!password} to the bot. Logged
+    out everywhere? Use the reset code from the signup page on the reset page. Neither? Only
+    then a bot admin creates a reset link (\cmd{!signup reset}). Details:
+    \autoref{sec:passwords}.
+  \item[\enquote{I lost my reset code.}]
+    If they can still log in: \cmd{!password code} gives a new one, and the old one stops
+    working. If not, a bot admin creates a reset link; after logging in, they get a new code
+    with \cmd{!password code}.
+  \item[\enquote{The reset page says the code doesn't match.}]
+    Check the username (e.g.\ \cmd{anna.beispiel}, or the university address) and the code;
+    dashes and lower case don't matter. After 5 wrong tries the page refuses that account
+    for a day; then a bot admin can help with \cmd{!signup reset}.
+  \item[\enquote{Element wants me to verify my new login, but I have no other device.}]
+    Enter the recovery key. Without it, choose \ui{Can't confirm?} and then \ui{Reset
+    identity}. Afterwards everything works again, except that older encrypted messages stay
+    unreadable. Save the new recovery key Element shows.
   \item[\enquote{I have an account but don't see the course.}]
     Existing accounts get an \emph{invitation} to the course space, which they have to accept
     in Element (look under \ui{Invites} or in the space list). If there is no invitation, they
@@ -85,7 +100,9 @@ Watch for the \robot{} reaction:
   \item[\enquote{I can't read older messages.}]
     Encrypted messages need the keys from their other devices or their recovery key. After
     a password reset or on a new device without the recovery key, older messages stay
-    unreadable. That can't be fixed afterwards.
+    unreadable. That can't be fixed afterwards, by nobody: the key never reaches the server.
+    \cmd{!password} avoids the problem when the person is still logged in somewhere, because
+    their sessions stay logged in.
   \item[\enquote{I can't write in Announcements.}]
     That's intended: only staff can post there. Questions belong in \enquote{Questions}.
 \end{description}

@@ -19,6 +19,7 @@ EMAIL_SHAPE = re.compile(r"^[^@\s<>\"'(),;:]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
 RESERVED_LOCALPARTS = frozenset({"adminbot", "admin"})
 RESERVED_PREFIXES = ("bot.", "guest.")
 GUEST_PREFIX = "guest."
+BOT_PREFIX = "bot."
 
 
 class IdentityError(ValueError):
@@ -85,6 +86,31 @@ def is_local_user(user_id: str, server_name: str) -> bool:
         and user_id.split(":", 1)[1] == server_name
         and len(user_id.split(":", 1)[0]) > 1
     )
+
+
+def is_bot_account(user_id: str) -> bool:
+    """Professor bots (@bot.<owner>.<name>), plan §10."""
+    return user_id.startswith("@" + BOT_PREFIX)
+
+
+def user_id_for_login(value: str, server_name: str, allowed_domains: Iterable[str]) -> UserID | None:
+    """What someone types as their username on the /recover page: 'anna.beispiel',
+    '@anna.beispiel:<server_name>' or their university address. None if it can't be a user here."""
+    value = value.strip()
+    if value.startswith("@"):
+        local, _, server = value[1:].lower().partition(":")
+        if server != server_name.lower():
+            return None
+    elif "@" in value:
+        try:
+            return user_id_for_email(value, server_name, allowed_domains)
+        except IdentityError:
+            return None
+    else:
+        local = value.lower()
+    if not local or not LOCALPART_VALID.match(local):
+        return None
+    return UserID(f"@{local}:{server_name}")
 
 
 def group_by_user(

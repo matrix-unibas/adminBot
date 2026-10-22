@@ -77,6 +77,7 @@ async def bot(maubot_plugin) -> AdminBot:
     p.ops.invite = AsyncMock()
     p.ops.open_dm = AsyncMock(return_value=DM)
     p.ops.remember_dm = AsyncMock()
+    p.ops.has_device_keys = AsyncMock(return_value=True)
     p.ops.joined_or_invited = AsyncMock(return_value=set())
     p.client.upload_media = AsyncMock(return_value="mxc://example.com/file")
     p.synapse.user_exists = AsyncMock(return_value=True)

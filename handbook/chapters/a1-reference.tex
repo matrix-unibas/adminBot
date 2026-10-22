@@ -1,23 +1,28 @@
 \chapter{Command reference}
 \label{ch:reference}
 
-All commands at a glance. \textbf{Who}: \emph{all} = everyone the bot knows,
+All commands at a glance. \textbf{Who}: \emph{everyone} = every user of the server,
+students included; \emph{all} = everyone the bot knows,
 \emph{staff} = course owner and TAs of that course, \emph{prof} = professors,
 \emph{owner} = the course owner, \emph{admin} = bot admins. Admins can always do everything.
 Commands marked \faCheckDouble{} show a plan first and run after \cmd{!confirm}.
 \cmdbreak{!help <command>} shows the details of each one in the chat.
 
 \small
-\begin{longtable}{@{}>{\raggedright\arraybackslash}p{7.6cm}>{\raggedright\arraybackslash}p{1.2cm}>{\raggedright\arraybackslash}p{5.6cm}@{}}
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{7.4cm}>{\raggedright\arraybackslash}p{1.4cm}>{\raggedright\arraybackslash}p{5.6cm}@{}}
 \toprule
 \textbf{Command} & \textbf{Who} & \textbf{What it does} \\
 \midrule
 \endhead
 \multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Basics}} \\*
-\cmdbreak{!help [<command> [<sub>]]} & all & overview, or details of one command \\
+\cmdbreak{!help [<command> [<sub>]]} & everyone & overview, or details of one command \\
 \cmdbreak{!whoami} & all & your roles and courses \\
 \cmdbreak{!confirm <code>} & all & run your pending plan \\
 \cmdbreak{!cancel} & all & drop your plan, stop waiting for a file \\
+\addlinespace
+\multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Your account}} \\*
+\cmdbreak{!password} & everyone & link to set a new password for your own account (1 hour); sessions stay logged in \\
+\cmdbreak{!password code} & everyone & new reset code for the reset page; the old one stops working \\
 \addlinespace
 \multicolumn{3}{@{}l}{\textbf{\sffamily\color{accent}Courses and rooms}} \\*
 \cmdbreak{!course create <code> "<title>" [--semester HS26] [--template <name>]} & prof & new course space with rooms \\

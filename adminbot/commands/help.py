@@ -13,6 +13,7 @@ from .base import CommandGroup, CommandSpec, command
 # Sections of the !help overview: (strings key of the heading, command names).
 AREAS = [
     ("help.area.basics", ["help", "whoami", "confirm", "cancel"]),
+    ("help.area.account", ["password"]),
     ("help.area.courses", ["course", "room"]),
     ("help.area.people", ["invite", "roster", "signup"]),
     ("help.area.groups", ["groups"]),
@@ -34,7 +35,15 @@ class Viewer:
     professor: bool
     staff: bool
 
-    def sees(self, role: Role | None) -> bool:
+    @property
+    def known(self) -> bool:
+        """Users the bot doesn't know (students) only see the public commands."""
+        return self.admin or self.professor or self.staff
+
+    def sees(self, spec: CommandSpec) -> bool:
+        if not self.known:
+            return spec.public
+        role = spec.role
         if role is None or self.admin:
             return True
         if role == Role.ADMIN:
@@ -53,7 +62,7 @@ class HelpCommands(CommandGroup):
             staff=await store.is_staff_anywhere(sender),
         )
 
-    @command("help", usage="usage.help", role=None, needs=())
+    @command("help", usage="usage.help", role=None, needs=(), public=True)
     async def help(self, evt: MessageEvent, args: str) -> None:
         """No arguments: overview of the commands the sender's roles allow.
         `<command>`: that command's subcommands (or its full help if it has none).
@@ -74,7 +83,7 @@ class HelpCommands(CommandGroup):
                 await self.reply_text(evt, self.bot.router.missing_subcommand(name, sub))
                 return
             specs = match
-        visible = [s for s in specs if viewer.sees(s.role)]
+        visible = [s for s in specs if viewer.sees(s)]
         if not visible:
             await self.reply(evt, "msg.help_not_for_you", command=specs[0].label if sub else name,
                              role=t(ROLE_KEYS.get(specs[0].role, "help.role.any")))
@@ -85,9 +94,12 @@ class HelpCommands(CommandGroup):
             await self.reply_text(evt, self.group(name, visible))
 
     def overview(self, viewer: Viewer) -> str:
+        if not viewer.known:
+            specs = [s for s in self.bot.router.specs if viewer.sees(s) and s.name != "help"]
+            return t("msg.help_public", usages="\n".join(f"- {t(s.usage)}" for s in specs))
         lines = [t("msg.help_header")]
         for heading, names in AREAS:
-            specs = [s for s in self.bot.router.specs if s.name in names and viewer.sees(s.role)]
+            specs = [s for s in self.bot.router.specs if s.name in names and viewer.sees(s)]
             if not specs:
                 continue
             lines.append(f"\n**{t(heading)}**")

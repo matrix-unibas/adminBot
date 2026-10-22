@@ -15,9 +15,16 @@ async def make_course(bot, code="CS101", owner=PROF):
     await bot.store.add_staff(code, owner, "owner")
 
 
-async def test_unknown_sender_gets_no_reply(chat):
-    assert await chat.send("!help", sender=STUDENT) == []
+async def test_unknown_sender_only_gets_public_commands(bot, chat):
+    reply = (await chat.send("!help", sender=STUDENT))[0]
+    assert "!password" in reply and "!course" not in reply and "!whoami" not in reply
     assert await chat.send("!course create X y", sender=STUDENT) == []
+    assert await chat.send("!whoami", sender=STUDENT) == []
+    assert "is only for professors" in (await chat.send("!help course", sender=STUDENT))[0]
+    # In course rooms other bots may have a !help too: no answer, not even "please DM me".
+    bot.ops.is_dm = AsyncMock(return_value=False)
+    assert await chat.send("!help", sender=STUDENT) == []
+    assert await chat.send("!password", sender=STUDENT) == []
 
 
 async def test_foreign_server_and_unrelated_messages_ignored(chat):
@@ -242,3 +249,37 @@ async def test_template_list_and_unknown(bot, chat):
 async def test_bots_disabled(chat):
     reply = (await chat.send("!bot list", sender=PROF))[0]
     assert "startup check failed" in reply or "not enabled" in reply
+
+
+async def test_password_link_for_own_account(bot, chat):
+    replies = await chat.send("!password", sender=STUDENT)
+    assert len(replies) == 1 and STUDENT in replies[0] and "/reset?t=" in replies[0]
+    assert "valid 60 minutes" in replies[0]
+    assert chat.reactions() == ["\U0001F916"]
+    [token] = await bot.store.tokens_for(STUDENT, "reset")
+    assert token.created_by == STUDENT
+    assert (await bot.store.recent_audit(1))[0].action == "password.self"
+    # Staff use the same command for their own account.
+    assert "/reset?t=" in (await chat.send("!password", sender=PROF))[0]
+    assert "no subcommand `nope`" in (await chat.send("!password nope", sender=STUDENT))[0]
+
+
+async def test_password_code_replaces_the_old_one(bot, chat):
+    first = (await chat.send("!password code", sender=STUDENT))[0]
+    first_hash = await bot.store.get_reset_code(STUDENT)
+    second = (await chat.send("!password code", sender=STUDENT))[0]
+    assert "/recover" in second and "outside Matrix" in second
+    assert first_hash and await bot.store.get_reset_code(STUDENT) != first_hash
+    code = re.search(r"`([0-9A-Z-]{24})`", second).group(1)
+    assert code not in first
+
+
+async def test_password_help_and_refusals(bot, chat):
+    group = (await chat.send("!help password", sender=STUDENT))[0]
+    assert "!password code" in group
+    assert "reset code" in (await chat.send("!password code --help", sender=STUDENT))[0]
+    assert "don't need a password" in (await chat.send("!password", sender=f"@bot.prof.quiz:{SERVER}"))[0]
+    bot.config["password.self_service"] = False
+    bot.config["password.reset_codes"] = False
+    assert "switched off" in (await chat.send("!password", sender=STUDENT))[0]
+    assert "switched off" in (await chat.send("!password code", sender=STUDENT))[0]

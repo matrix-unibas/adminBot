@@ -123,22 +123,90 @@ code (professors only), the link only creates the account.
 Instead of the email you can also give the Matrix ID (\cmd{@anna.beispiel:matrix.dmi.unibas.ch}).
 You can manage links you created yourself and the links of courses where you are staff.
 
-\section{Guests and password resets (admins)}
+\section{Guests (admins)}
 \label{sec:guests}
 
-Two things only bot admins can do. Ask them if you need it:
+Guests without a university address, e.g.\ a guest lecturer, need a bot admin:
+\cmd{!signup guest <email> <name> [course]} creates a link for the account
+\cmd{@guest.<name>}.
+
+\section{Passwords and lost keys}
+\label{sec:passwords}
+
+There is no \enquote{forgot password} email on \server: the server sends no emails. Instead,
+everyone, students included, can reset their own password with the bot. You don't have to do
+anything for your students except point them here.
+
+\subsection{Three ways to a new password}
+
+\begin{center}
+\begin{tabularx}{\textwidth}{@{}lLL@{}}
+\toprule
+\textbf{Situation} & \textbf{What to do} & \textbf{Sessions} \\
+\midrule
+Still logged in somewhere (e.g.\ the phone), forgot the password &
+  Send \cmd{!password} to the bot. It replies with a link for the own account, valid
+  1~hour. & stay logged in \\
+Logged out everywhere, has the reset code &
+  Open the reset page (\url{https://matrix.dmi.unibas.ch/_matrix/maubot/plugin/adminbot/recover}),
+  enter username, reset code and a new password. The page then shows a new code. &
+  all logged out \\
+Neither &
+  A bot admin creates a reset link with \cmd{!signup reset @user} (24~hours). &
+  all logged out \\
+\bottomrule
+\end{tabularx}
+\end{center}
+
+\begin{you}
+!password
+\end{you}
+\begin{botreply}
+Here is a link to set a new password for \textbf{@anna.beispiel:matrix.dmi.unibas.ch}
+(valid 60 minutes, works once):\\
+https://matrix.dmi.unibas.ch/\_matrix/maubot/plugin/adminbot/reset?t=\dots\\[4pt]
+Your sessions stay logged in. \dots
+\end{botreply}
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[Reset code]
+    Shown once on the signup page when the account is created. \cmd{!password code} gives a
+    new one (the old one stops working); people with accounts from before version 0.3 get
+    their first code this way. Each code works once. It must be kept outside Matrix, in a
+    password manager or on paper, because whoever needs it can't read their chats.
+  \item[Notices]
+    After every reset the bot tells the person in a direct chat. If all their sessions were
+    logged out, the message waits until they have logged in again, so they can read it.
+  \item[Why professors can't reset students' passwords]
+    Whoever creates a reset link for someone else can open it and take over the account.
+    That's why only bot admins can do it, and why the self-service ways only ever work for
+    the sender's own account.
+\end{description}
+
+\subsection{Recovery key: why old messages can be lost}
+
+Element's \emph{recovery key} unlocks the encrypted messages. It is created on the person's
+device and never reaches the server or the bot, so \textbf{nobody can restore it}. A new
+password doesn't help with this:
 
 \begin{itemize}
-  \item \textbf{Guests without a university address}, e.g.\ a guest lecturer:
-        \cmd{!signup guest <email> <name> [course]} creates a link for the account
-        \cmd{@guest.<name>}.
-  \item \textbf{Forgotten passwords}: \cmd{!signup reset @user} creates a reset link that
-        works once and expires after 24 hours. Using it logs the person out everywhere,
-        and the bot tells them in a direct chat that their password was reset.
+  \item \textbf{With the recovery key}, a new login just asks for it, and everything is
+        readable as before.
+  \item \textbf{Without it}, Element asks to confirm the new login. The way out is
+        \ui{Can't confirm?} and then \ui{Reset identity} (the words differ a little between
+        Element versions; it needs the account password). Afterwards the person can chat
+        normally and is shown as verified again, but older encrypted messages stay
+        unreadable. Element then shows a new recovery key: this time, save it.
 \end{itemize}
 
-Password resets are admin-only on purpose: whoever has a reset link can take over the
-account.
+\begin{tip}[Text for your students]
+Paste this into your first announcement:\par\smallskip
+\enquote{When you log in to Element for the first time, set up \emph{recovery} and keep the
+recovery key in a password manager or on paper, together with the reset code from the signup
+page. Forgot your password? If you're still logged in somewhere, send \cmd{!password} to
+@adminbot. Otherwise use your reset code on the reset page. Lost the code? \cmd{!password
+code} gives you a new one.}
+\end{tip}
 
 \section{Compare with the official list: \texttt{!roster sync}}
 

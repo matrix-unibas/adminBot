@@ -18,12 +18,15 @@ from .db import Store
 from .jobs import JobRunner
 from .matrix_ops import MatrixOps
 from .migrations import upgrade_table
+from .notices import Notices
 from .signups import SignupService
 from .synapse_admin import SynapseAdmin
 from .userbots import BotManager, UserbotsClient
 from .web import WEB_CLASSES
 
 CLEANUP_INTERVAL = 300
+# How often held notices are retried: a new user should get the welcome soon after logging in.
+NOTICE_INTERVAL = 60
 
 
 class AdminBot(Plugin):
@@ -36,6 +39,7 @@ class AdminBot(Plugin):
     confirm: ConfirmRegistry
     jobs: JobRunner
     signups: SignupService
+    notices: Notices
     uploads: PendingUploads
     bots: BotManager | None
     router: CommandRouter
@@ -70,6 +74,7 @@ class AdminBot(Plugin):
             self.register_handler_class(cls(self))
         await self.jobs.start()
         self.sched.run_periodically(CLEANUP_INTERVAL, self.cleanup)
+        self.sched.run_periodically(NOTICE_INTERVAL, self.deliver_notices)
 
     def _build_services(self) -> None:
         """Everything that only depends on config values (rebuilt when the config changes)."""
@@ -78,7 +83,8 @@ class AdminBot(Plugin):
         self.authz = Authz(self.store, self.config)
         self.audit = Audit(self.store, self.ops, self.config["audit_room"])
         self.confirm = ConfirmRegistry(self.store, self.config["confirm.ttl_minutes"])
-        self.signups = SignupService(self.store, self.synapse, self.ops, self.audit, self.config)
+        self.notices = Notices(self.store, self.ops, self.config["notices.max_age_days"])
+        self.signups = SignupService(self.store, self.synapse, self.ops, self.audit, self.config, self.notices)
         self.uploads = PendingUploads(self.config["uploads.wait_minutes"])
         if getattr(self, "jobs", None) is None:
             self.jobs = JobRunner(self, self.config["jobs.delay_seconds"])
@@ -159,3 +165,7 @@ class AdminBot(Plugin):
         await self.confirm.expire()
         await self.signups.expire()
         self.uploads.expire()
+
+    async def deliver_notices(self) -> None:
+        """Send held notices to users who now have a device (notices.py)."""
+        await self.notices.deliver()

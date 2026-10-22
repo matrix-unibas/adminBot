@@ -180,6 +180,12 @@ class MatrixOps:
             await self.client.set_account_data(EventType.DIRECT, direct)
         self._dm_cache[user_id] = room_id
 
+    async def has_device_keys(self, user_id: UserID) -> bool:
+        """True if the user has at least one device that uploaded its encryption keys, i.e. an
+        encrypted message sent now can be read by them (notices.py)."""
+        resp = await self.client.query_keys([user_id])
+        return bool(resp.device_keys.get(user_id))
+
     async def open_dm(self, user_id: UserID) -> RoomID:
         """Most recent DM with user_id (from m.direct) or a new one. Encrypted if the bot can encrypt."""
         direct = await self._direct()

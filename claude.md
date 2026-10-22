@@ -1,8 +1,8 @@
-# MARVIN Admin Bot: Implementation Plan (v6)
+# MARVIN Admin Bot: Implementation Plan (v7)
 
-Status: **implemented** (phases 0–8). Phases 0–7 run on production; Phase 8 (professor bots) is being rolled out (2026-10-07). Plugin version 0.2.0 (user feedback, help, handbook; 2026-10-16) is not deployed yet. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help).
+Status: **implemented** (phases 0–8). Phases 0–7 run on production; Phase 8 (professor bots) is being rolled out (2026-10-07). Plugin version 0.2.0 (user feedback, help, handbook; 2026-10-16) is not deployed yet; 0.3.0 (self-service password resets, 2026-10-22) builds on it. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help), v7 2026-10-22 (password self-service, notices, recovery key).
 Scope: a new maubot plugin (plugin ID `ch.unibas.dmi.marvin.adminbot`). Planned as `server/admin-bot/`, it now lives in its own repository (`adminBot`); paths below that say `server/admin-bot/` mean the root of that repo. See `README.md` for development and testing.
-Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to apply them is in `server/docs/admin-bot-setup.md` in the `matrix-unibas` repo.
+Infrastructure changes outside the plugin are listed in §16 (I1–I11); how to apply them is in `server/docs/admin-bot-setup.md` in the `matrix-unibas` repo.
 
 **Implementation notes (v5): where the code differs from the plan below**
 - **Own command router instead of maubot's `@command` decorators.** maubot answers usage help to anyone, in any room, before a handler runs. The bot sits in every course room, so `commands/base.py` routes all messages itself: unknown senders get silence, known users outside a DM get "please DM me".
@@ -27,9 +27,18 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I10); how to 
 - **Professor bots are cross-signed** (2026-10-17). After `client/new` the job calls maubot's `generate_recovery_key`, so the bot's device is verified by its owner (Element, MSC4153). The recovery key is stored in `bot_recovery_key` and kept after `!bot delete`; a reactivated account (`409 client_has_keys`) is signed again with `/verify`. A failure only warns (owner + audit room). `!bot info` shows `Verified`.
 - **Handbook.** `handbook/` holds a LaTeX handbook in two versions (professors; technical with architecture, Synapse connection, security). `make` builds both.
 
-**Verified** (2026-10-06; v6 additions 2026-10-16):
-- 102 pytest tests (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks; cross-signing of professor bots).
-- v6 has *not* been run against the local Synapse or the test node yet.
+**Changes in v7 (plugin 0.3.0, 2026-10-22): passwords and lost keys**
+- **Public commands.** `CommandSpec.public`: local users the bot doesn't know (students) may use `!help` and `!password` in a DM. Everything else from them, and anything outside a DM, stays unanswered (no "please DM me" either: in course rooms `!help` may be meant for another bot). `!help` shows them only the public commands.
+- **`!password`**: a reset link for the sender's own account (`password.self_ttl_minutes`, default 60). Marked by `created_by == user_id` on the reset token; redeeming it keeps the sessions (`logout_devices: false`), because the sender proved they hold one, and logging out would only destroy their keys.
+- **Reset codes**: one per account (`reset_code`, SHA-256 only), 20 Crockford base32 characters. Shown once on the signup page and by `!password code`. The public `/recover` page takes username (localpart, Matrix ID or university address) + code + new password, logs all sessions out and shows a new code. Per-account lock after `password.max_code_attempts` wrong codes per 24 h (in memory), on top of the page rate limit.
+- **Notices wait for a device** (`notices.py`, `pending_notice`). Found while planning: the reset notice was sent right after `logout_devices: true`, i.e. encrypted for zero devices, so it could never be read. The welcome after signup had the same problem. Notices are now held until `/keys/query` shows a device with keys (checked at once, then every 60 s; dropped after `notices.max_age_days`). mautrix shares room keys with invited members too, so a welcome DM the user hasn't joined yet is readable.
+- **Welcome DM** after signup: save the recovery key, keep the reset code, `!password`.
+- **Recovery keys can't be restored by the server.** The plugin tells users to save them (signup page, welcome, notices) and explains *Reset identity*. Forcing the setup is an Element client setting served in the well-known file: new infra item I11.
+- Handbook: §4.5 "Passwords and lost keys" (with a text for students), troubleshooting, glossary (reset code vs recovery key), technical chapters (notices, I11, threat model of reset codes).
+
+**Verified** (2026-10-06; v6 additions 2026-10-16; v7 2026-10-22):
+- 120 pytest tests (v6: reaction, help per command, did-you-mean, role-specific errors, upload retry, job hints, line breaks; cross-signing of professor bots. v7: public commands, `!password`, reset codes and `/recover`, per-account lock, held notices).
+- v6 and v7 have *not* been run against the local Synapse or the test node yet.
 - Against a real local Synapse 1.157 with the plugin from source (`dev/setup.sh --bots`):
   - course create (rooms, join rules, power levels), TA scoping, refusal outside DMs
   - invite with CSV, the signup page (CSRF nonce, single use, force-join, threepid)
@@ -123,6 +132,7 @@ Professor / TA ──DM (E2EE)──► @adminbot (in matrix-maubot) ─┬─ h
 - Only in a direct room between the bot and the sender. Links, email lists and tokens therefore never end up in a shared room.
   - Matrix has no server-side "is DM" flag. The bot treats a room as a DM when it has exactly two joined members, the bot and the sender, and no third invite is pending. This is checked on every command, not cached, because someone can be invited later.
 - Only from senders on the local server. Federation is already off (`federation_domain_whitelist: []`), so this is a cheap second guard.
+- Local users without a role (students) only get the public commands (`!help`, `!password`, v7), in a DM; anything else from them is ignored silently.
 
 **APIs**
 - Synapse calls go through mautrix's `SynapseAdminPath` and `client.api.request`.
@@ -228,12 +238,20 @@ Decision:
 - **People who create their account through a course signup link are force-joined** into that course's space. They clicked the link for exactly this purpose, so asking again would only add friction.
 - Both are configurable (`invite_mode_existing`, `invite_mode_new`).
 
-**Password reset (same page)**
-- Without SMTP and without IDM, Synapse can't reset passwords by itself. Today the only way is an admin in Ketesa.
-- `!signup reset @user` (admins only) issues a single-use reset link, valid for 24 hours. The page shows the fixed username and only asks for a new password. It then calls the admin API (`POST /_synapse/admin/v1/reset_password/<user>`, `logout_devices: true`).
-- **Admins only, not professors:** whoever issues the link can open it themselves. For professors, that would mean taking over a student's account.
-- Every reset is audited. The bot also DMs the affected user that their password was reset, so a misused reset is noticed.
-- The user guide says: keep the Element recovery key. Otherwise a reset logs out all devices and encrypted history is lost.
+**Password resets** (v7: self-service; before, admins only)
+- Without SMTP and without IDM, Synapse can't reset passwords by itself. The bot offers three paths, all through the same webapp:
+
+| Situation | Path | Sessions |
+|---|---|---|
+| Still logged in somewhere | `!password` (any local user, DM): single-use link for the sender's **own** account, valid 60 minutes | kept: the sender proved they hold a session, and logging it out would destroy their keys |
+| Logged out everywhere, has the reset code | `/recover`: username + reset code + new password; then a new code is shown | all logged out |
+| Neither | `!signup reset @user` (admins only): single-use link, 24 hours | all logged out |
+
+- All three call `POST /_synapse/admin/v1/reset_password/<user>`.
+- **Resets for other people stay admin-only:** whoever issues the link can open it themselves. For professors, that would mean taking over a student's account. The self-service paths only ever act on the user's own account.
+- **Reset codes:** one per account, shown once on the signup page and by `!password code` (which replaces the old one), stored as a SHA-256 hash. 100 bits, so guessing is hopeless; the page's rate limit plus a per-account lock (5 wrong codes per 24 h) are a second line. Wrong code, unknown user and locked account get the same answer.
+- Every reset is audited (`reset.create/redeem`, `password.self`, `password.code`, `reset.recover`). The user gets a DM about it, held until they have a device again (§7, notices), so a misused reset is noticed.
+- **Lost encryption keys can't be fixed by the server.** Element's recovery key and the cross-signing private keys never leave the user's devices. A user who lost all sessions and the recovery key must *Reset identity* in Element (needs the password, which the paths above give them); old encrypted messages stay unreadable. The bot reminds users to save the key (signup page, welcome DM, notices); Element can be made to *require* it with a well-known setting (I11).
 
 **Commands**
 - `!signup new <email> [course]`
@@ -242,6 +260,8 @@ Decision:
 - `!signup revoke <email|@user>`
 - `!signup renew <email|@user>`: issues a new link and invalidates the old one.
 - `!signup reset @user` (admins): password-reset link for an existing account.
+- `!password` (everyone, own account): reset link, sessions stay logged in.
+- `!password code` (everyone, own account): a new reset code for `/recover`.
 
 ## 5. Roles and authorisation
 
@@ -252,6 +272,7 @@ Decision:
 | `admin` | `admins:` list in the plugin instance config (bootstrap) | everything: manage professors, global templates, audit, approve/kill user bots |
 | `professor` | allowlist, managed by admins: `!admin prof add\|remove\|list @user` (DB, audited); config may pre-seed it | create courses; full control of courses they own; appoint TAs; personal templates; own bots (§10) |
 | `ta` | appointed per course by that course's professor: `!course ta add\|remove <code> @user` | invite, roster sync and groups within that course only; no delete, archive, TA changes or bots |
+| everyone | any local user, no role (v7) | `!help` and `!password`/`!password code` for their own account, in a DM; nothing else |
 
 - Checks run in one place, `authz.require(role, course=…)`.
 - Ownership lives in the bot DB (`course_staff`), never in room power levels.
@@ -279,6 +300,7 @@ Decision:
 **Data protection**
 - The *bot DB* keeps emails only while a signup is pending. They are deleted when the token is used or expires (14 days).
 - The audit log stores counts and user IDs, never email lists.
+- Reset codes are stored only as hashes (`reset_code`). Held notices (`pending_notice`) contain a strings key and its parameters, no secrets.
 - Emails bound as threepids stay in *Synapse* as part of the account. That is deliberate: without IDM, the email is the only record of who an account belongs to. It's also needed for roster sync and for SMTP-based resets if SMTP ever comes.
   - The privacy notice should say so.
   - If that isn't wanted, set `bind_threepids: false` in the config and keep only the localpart.
@@ -466,13 +488,15 @@ adminBot/ (repo root; planned as server/admin-bot/)
     synapse_admin.py     # admin API wrappers
     matrix_ops.py        # spaces, rooms, power levels, membership, DM check
     attachments.py       # file in/out incl. E2EE, PendingUploads
-    signups.py           # signup + reset tokens, redeem, pending invites
+    signups.py           # signup + reset tokens, reset codes, redeem, recover, pending invites
+    notices.py           # welcome/reset notices held until the user has a device (v7)
     delivery.py          # Delivery interface; CsvDelivery, InlineDelivery
     userbots.py          # .mbp validation, userbots API client, BotManager
     strings/             # t(key), en.py
     commands/            # base (CommandRouter: commands + uploads, @command, helpers), help, confirm,
-                         # admin, course, room, invite, roster, groups, template, signup, bots
-    web/                 # signup.py (handlers), pages.py (HTML), ratelimit.py
+                         # admin, course, room, invite, roster, groups, template, signup, bots,
+                         # password (public, v7)
+    web/                 # signup.py (signup/reset/recover handlers), pages.py (HTML), ratelimit.py
   tests/                 # pytest with maubot's fixtures (maubot[testing])
   dev/                   # setup.sh: local Synapse + Postgres (+ second maubot), standalone config
   handbook/              # LaTeX handbook: professors' version and technical version, Makefile (v6)
@@ -481,7 +505,7 @@ adminBot/ (repo root; planned as server/admin-bot/)
 Server-side setup (everything outside this repo): `server/docs/admin-bot-setup.md` in `matrix-unibas`. The professor guide is `handbook/` (v6); its technical version covers architecture and security. The admin runbook is still Phase 9.
 
 **DB tables**
-- `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`, `bot_recovery_key`.
+- `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`, `bot_recovery_key`, `reset_code`, `pending_notice` (v7).
 
 ## 14. Phases
 
@@ -513,6 +537,8 @@ Server-side setup (everything outside this repo): `server/docs/admin-bot-setup.m
 - A public URL for the signup page on the test node (works through the SSH tunnel until then). On production it's answered by I1.
 - Professor bot defaults: quota 3 and approval required. Confirm, or relax the approval requirement later.
 - Whether TAs may also see `!signup list` for their course (proposal: yes, read-only).
+- **Element X and I11:** does Element X honour `secure_backup_required`? Element Web/Desktop do. Check on the test node.
+- Held notices rely on mautrix sharing the room key with the user's first device once it has keys. Check on the test node that the welcome DM is readable after the first login.
 
 ## 16. Infrastructure changes (outside the plugin)
 
@@ -520,6 +546,7 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 - That guide keeps changes minimal: I1, I2, I4 and I5 now, I6 by hand, I8 after Phase 3, I7 in Phase 8.
 - I3 (pickle key, `registration_secrets`) is deliberately **deferred**: changing the key breaks existing maubot clients and adds little.
 - I9 is optional.
+- I11 (v7) is independent of the others and can go in with the next infra PR.
 
 **Status (2026-10-07):**
 
@@ -532,6 +559,7 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 | I7 | in the repo, rolling out (admin-bot-setup.md §7) |
 | I8 | open: `enable_registration` is still `true` |
 | I9 | done (`startup.md` updated) |
+| I11 | open (v7): well-known `secure_backup_required` |
 
 **I1. Public route for the signup page** (`server/nginx/matrix.conf`)
 - Host nginx sends everything matching `^(/_matrix|…)` to Synapse, so `/_matrix/maubot/...` currently returns a Synapse 404.
@@ -588,3 +616,10 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 
 **I10. Test node**
 - Same items as above. The signup page stays on the SSH tunnel URL until the test node has a reachable hostname.
+
+**I11. Make Element require a recovery key** (`/.well-known/matrix/client`, served by host nginx)
+- Add `"io.element.e2ee": {"secure_backup_required": true, "secure_backup_setup_methods": ["key"]}`.
+- Element Web/Desktop then make every user set up recovery right after the first login, and the dialog can't be skipped. A recovery key, not a passphrase, because people forget passphrases as easily as passwords.
+- Why: a user who loses all sessions without a recovery key loses their encrypted history for good. The bot can reset passwords (§4), but it can't restore keys.
+- Check Element X on the test node (§15).
+- Also add the `/recover` path to the checklist for I1: it lives under the same `location ^~ /_matrix/maubot/plugin/<instance>/` prefix, so no nginx change is needed.

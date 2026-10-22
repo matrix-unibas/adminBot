@@ -7,6 +7,7 @@ from .course import CourseCommands
 from .groups import GroupCommands
 from .help import HelpCommands
 from .invite import InviteCommands
+from .password import PasswordCommands
 from .room import RoomCommands
 from .roster import RosterCommands
 from .signup import SignupCommands
@@ -14,6 +15,7 @@ from .template import TemplateCommands
 
 COMMAND_CLASSES = [
     HelpCommands,
+    PasswordCommands,
     ConfirmCommands,
     AdminCommands,
     CourseCommands,

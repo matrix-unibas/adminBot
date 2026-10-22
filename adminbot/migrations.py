@@ -173,3 +173,27 @@ async def upgrade_v2(conn: Connection, scheme: Scheme) -> None:
             recovery_key TEXT NOT NULL
         )"""
     )
+
+
+@upgrade_table.register(description="Password reset codes and notices held until a device exists")
+async def upgrade_v3(conn: Connection, scheme: Scheme) -> None:
+    serial = "INTEGER PRIMARY KEY" if scheme == Scheme.SQLITE else "BIGSERIAL PRIMARY KEY"
+    # One code per account, only its SHA-256 (plan §4, reset codes).
+    await conn.execute(
+        """CREATE TABLE reset_code (
+            user_id    TEXT PRIMARY KEY,
+            code_hash  TEXT NOT NULL,
+            created_at BIGINT NOT NULL
+        )"""
+    )
+    # Messages for users who have no device yet (welcome after signup, notice after a reset);
+    # sent by the cleanup loop once one exists, so the encrypted DM can be read.
+    await conn.execute(
+        f"""CREATE TABLE pending_notice (
+            id         {serial},
+            user_id    TEXT NOT NULL,
+            text_key   TEXT NOT NULL,
+            params     TEXT NOT NULL,
+            created_at BIGINT NOT NULL
+        )"""
+    )

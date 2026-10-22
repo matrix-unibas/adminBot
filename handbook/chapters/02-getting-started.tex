@@ -16,10 +16,19 @@ You need three things:
         don't need this: the course owner appoints them.
 \end{enumerate}
 
-\begin{warning}[Keep your recovery key]
-When Element asks you to set up \emph{secure backup}, do it and keep the recovery key in a
-safe place. Course rooms and your chat with the bot are end-to-end encrypted. Without the
-key, a new device or a password reset means you can't read old messages any more.
+\begin{warning}[Keep two things: your recovery key and your reset code]
+\begin{itemize}
+  \item \textbf{Recovery key} (from Element). When Element asks you to set up
+        \emph{recovery} or \emph{secure backup}, do it and keep the key in a password
+        manager or on paper. Course rooms and your chat with the bot are end-to-end
+        encrypted. Without the key, a new device or a password reset means you can't read
+        old messages any more, and nobody can get them back for you.
+  \item \textbf{Reset code} (from the bot). The signup page shows it once. With it you can
+        set a new password yourself if you forget yours, even when you are logged out
+        everywhere. Lost it? Send \cmd{!password code} to the bot for a new one.
+\end{itemize}
+Keep both \emph{outside} Matrix: when you need them, you can't read your chats.
+\autoref{sec:passwords} explains what to do if you lose one of them.
 \end{warning}
 
 \section{Start a chat with the bot}
@@ -40,8 +49,9 @@ Courses: -\\[4pt]
 \cmd{!help} lists the commands these roles allow.
 \end{botreply}
 
-If the bot doesn't answer at all, you don't have a role yet: the bot ignores everyone who
-isn't a professor, TA or admin (\autoref{sec:no-reply}).
+If the bot only offers \cmd{!password} and \cmd{!password code}, you don't have a role yet:
+for everyone who isn't a professor, TA or admin, the bot only handles their own password
+(\autoref{sec:no-reply}).
 
 \begin{note}[Only in your direct chat]
 The bot accepts commands only in a chat that you and the bot are alone in. Commands can

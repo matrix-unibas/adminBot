@@ -52,6 +52,22 @@ signup:
     per_ip_per_hour: 20
     global_per_hour: 300
 
+password:
+  # `!password`: any user of this server can get a reset link for their own account from a
+  # session where they are still logged in. Their sessions stay logged in.
+  self_service: true
+  # Reset codes: shown once at signup and by `!password code`. With one, the /recover page
+  # sets a new password without anyone else (all sessions are logged out, a new code is shown).
+  reset_codes: true
+  self_ttl_minutes: 60
+  # Wrong codes per account per day on /recover before it refuses further tries for that account.
+  max_code_attempts: 5
+
+notices:
+  # Welcome and password notices wait until the user has a device that can decrypt them.
+  # Unsent notices older than this are dropped.
+  max_age_days: 30
+
 invites:
   # invite | force_join
   mode_existing: invite

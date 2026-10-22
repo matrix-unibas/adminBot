@@ -2,9 +2,17 @@
 from aiohttp.test_utils import make_mocked_request
 
 from adminbot.delivery import CsvDelivery, InlineDelivery, SignupLink
-from adminbot.signups import check_password, hash_token, new_token
-from adminbot.web.pages import signup_form
-from adminbot.web.ratelimit import RateLimiter, client_ip, parse_networks
+from adminbot.signups import (
+    RESET_CODE_ALPHABET,
+    check_password,
+    hash_reset_code,
+    hash_token,
+    new_reset_code,
+    new_token,
+    normalize_reset_code,
+)
+from adminbot.web.pages import done, recover_form, signup_form
+from adminbot.web.ratelimit import FailureCounter, RateLimiter, client_ip, parse_networks
 
 
 def test_token_is_random_and_only_hash_is_stored():
@@ -12,6 +20,29 @@ def test_token_is_random_and_only_hash_is_stored():
     assert len(raw) >= 43 and raw != token_hash
     assert hash_token(raw) == token_hash
     assert new_token()[0] != raw
+
+
+def test_reset_code_format_and_normalisation():
+    code = new_reset_code()
+    groups = code.split("-")
+    assert [len(g) for g in groups] == [4] * 5
+    assert set("".join(groups)) <= set(RESET_CODE_ALPHABET)
+    assert new_reset_code() != code
+    # Case, spaces and dashes are ignored; I/L read as 1, O as 0.
+    assert normalize_reset_code(" ab1o-xyz0 ") == "AB10XYZ0"
+    assert normalize_reset_code("il") == "11"
+    assert hash_reset_code(code.lower().replace("-", " ")) == hash_reset_code(code)
+
+
+def test_failure_counter():
+    now = [0.0]
+    counter = FailureCounter(limit=2, window=100, clock=lambda: now[0])
+    counter.fail("@a:x")
+    assert not counter.locked("@a:x")
+    counter.fail("@a:x")
+    assert counter.locked("@a:x") and not counter.locked("@b:x")
+    now[0] = 101
+    assert not counter.locked("@a:x")
 
 
 def test_check_password():
@@ -55,6 +86,13 @@ def _transport(ip):
 def test_signup_form_escapes():
     html = signup_form('@x:y"><script>', "tok", "nonce", 12, error="<b>")
     assert "<script>" not in html and "&lt;b&gt;" in html
+
+
+def test_recover_form_and_done_page_escape():
+    html = recover_form("n", 12, error="<b>", username='"><script>')
+    assert "<script>" not in html and "&lt;b&gt;" in html
+    html = done("@x:y", "https://example.com", reset_code="<i>", note_key="web.done_verify")
+    assert "<i>" not in html and "&lt;i&gt;" in html
 
 
 def test_csv_delivery_has_bom_and_rows():

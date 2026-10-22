@@ -86,6 +86,25 @@ class PendingInvite:
 
 
 @dataclass
+class Notice:
+    id: int
+    user_id: UserID
+    key: str  # strings key
+    params: dict[str, Any]
+    created_at: datetime
+
+    @classmethod
+    def from_row(cls, row: Any) -> Notice:
+        return cls(
+            id=row["id"],
+            user_id=row["user_id"],
+            key=row["text_key"],
+            params=json.loads(row["params"]),
+            created_at=to_dt(row["created_at"]),
+        )
+
+
+@dataclass
 class PlanRow:
     code: str
     kind: str
@@ -595,3 +614,34 @@ class Store:
             "ON CONFLICT (user_id) DO UPDATE SET recovery_key=excluded.recovery_key"
         )
         await self.db.execute(q, user_id, recovery_key)
+
+    # --- password reset codes ------------------------------------------------------------------
+    async def set_reset_code(self, user_id: UserID, code_hash: str) -> None:
+        q = (
+            "INSERT INTO reset_code (user_id, code_hash, created_at) VALUES ($1, $2, $3) "
+            "ON CONFLICT (user_id) DO UPDATE SET code_hash=excluded.code_hash, created_at=excluded.created_at"
+        )
+        await self.db.execute(q, user_id, code_hash, now_ms())
+
+    async def get_reset_code(self, user_id: UserID) -> str | None:
+        return await self.db.fetchval("SELECT code_hash FROM reset_code WHERE user_id=$1", user_id)
+
+    async def burn_reset_code(self, user_id: UserID, code_hash: str) -> bool:
+        """Delete the code only if it is still this one (two requests can't both use it)."""
+        q = "DELETE FROM reset_code WHERE user_id=$1 AND code_hash=$2 RETURNING user_id"
+        return await self.db.fetchval(q, user_id, code_hash) is not None
+
+    # --- notices held until the user has a device ------------------------------------------------
+    async def add_notice(self, user_id: UserID, key: str, params: dict[str, Any]) -> None:
+        q = "INSERT INTO pending_notice (user_id, text_key, params, created_at) VALUES ($1, $2, $3, $4)"
+        await self.db.execute(q, user_id, key, json.dumps(params), now_ms())
+
+    async def pending_notices(self, user_id: UserID | None = None) -> list[Notice]:
+        if user_id is None:
+            rows = await self.db.fetch("SELECT * FROM pending_notice ORDER BY id")
+        else:
+            rows = await self.db.fetch("SELECT * FROM pending_notice WHERE user_id=$1 ORDER BY id", user_id)
+        return [Notice.from_row(row) for row in rows]
+
+    async def delete_notice(self, notice_id: int) -> None:
+        await self.db.execute("DELETE FROM pending_notice WHERE id=$1", notice_id)

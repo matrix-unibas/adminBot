@@ -9,8 +9,11 @@ anything, and makes bulk actions explicit.
 
 \begin{itemize}
   \item \textbf{Allowlist.} Only bot admins (instance config \cmd{admins:}), professors (DB
-        allowlist, managed by admins) and course staff (DB, managed by course owners) get any
-        answer. Everyone else is ignored silently, so the bot reveals nothing to students.
+        allowlist, managed by admins) and course staff (DB, managed by course owners) can use
+        the course commands. Other local users only get the public commands (\cmd{!help},
+        \cmd{!password}, \cmd{!password code}) in a DM, which act on their own account and
+        reveal nothing about courses or other people; everything else from them is ignored
+        silently.
   \item \textbf{No implicit rights.} An email domain, the Synapse server-admin flag, the maubot
         UI login, and room power levels all grant nothing in the bot. Roles come only from
         the bot's configuration and database.
@@ -23,9 +26,10 @@ anything, and makes bulk actions explicit.
         tokens therefore never appear in a shared room.
   \item \textbf{Confirm for bulk and destructive actions.} Plans show what will happen; only
         the requester can confirm; the role is checked again at confirm time.
-  \item \textbf{Password resets are admin-only.} Whoever issues a reset link can open it. A
-        professor issuing resets could take over students' accounts. Every reset is audited
-        and the affected user is told in a DM.
+  \item \textbf{Resets for others are admin-only.} Whoever issues a reset link can open it. A
+        professor issuing resets could take over students' accounts. The self-service paths
+        (\cmd{!password}, reset codes) only ever work for the user's own account. Every reset
+        is audited and the affected user is told in a DM (\autoref{sec:notices}).
 \end{itemize}
 
 \section{Signup and reset links}
@@ -35,7 +39,7 @@ anything, and makes bulk actions explicit.
         database dump doesn't contain usable links.
   \item Single use: the token is burned atomically before the account is created, and
         restored only if account creation fails. Signup links expire after 14 days, reset
-        links after 24 hours.
+        links from an admin after 24 hours, links from \cmd{!password} after 1 hour.
   \item The username is fixed by the token. The page never lets the user choose it, so the
         mapping from university email to account can't be bypassed.
   \item The form carries a CSRF nonce: an HMAC of the token hash with a random key that
@@ -49,6 +53,33 @@ anything, and makes bulk actions explicit.
   \item The minimum password length (\cmd{signup.min_password_length}, default 12) is enforced
         by the bot, because the admin API bypasses Synapse's password policy.
 \end{itemize}
+
+\section{Self-service password resets}
+
+\begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
+  \item[\cmd{!password}]
+    The command has to come from a DM of the account itself, so the sender already holds a
+    logged-in session. The link only works for that account. Because of that, the reset
+    keeps all sessions (\cmd{logout_devices: false}); logging them out would only destroy
+    the encryption keys of the person who asked. Someone who stole a session could also use
+    it, but such a person can already read and write as the user; the user is notified and
+    can take the account back with their reset code or an admin.
+  \item[Reset codes]
+    20 characters from Crockford's base32 alphabet (100 bits, no I, L, O, U), stored as a
+    SHA-256 hash and compared in constant time. Guessing is pointless at that length; the
+    limits are a second line of defence: the page's per-IP and global rate limit, and a
+    per-account lock after \cmd{password.max_code_attempts} (default 5) wrong codes within
+    24 hours, whatever the IP. The lock can be abused to block one person's code for a day;
+    an admin reset still works then. Wrong code, unknown user and locked account all get the
+    same answer. A used code is burned atomically before the password changes (restored if
+    Synapse fails), all sessions are logged out (whoever uses the code may have lost them,
+    or may be an attacker who must be kicked out), and a new code is shown.
+  \item[What can't be fixed]
+    Element's recovery key and the cross-signing private keys never leave the user's
+    devices. No password reset can restore access to old encrypted messages. The server can
+    only push users to save the key (well-known setting, I11), remind them in the welcome
+    message, and explain \ui{Reset identity}.
+\end{description}
 
 \section{Professor bots}
 \label{sec:why-userbots}
@@ -98,5 +129,9 @@ unprivileged accounts; approval and the kill switch limit the exposure.
   \item \textbf{Domain merge assumption.} \cmd{x@unibas.ch} and \cmd{x@stud.unibas.ch} are
         treated as one person. This is correct only if the university never gives the same
         name to two people on the two domains (to be confirmed with ITS).
-  \item \textbf{Not yet verified on the test node:} encrypted uploads and the real nginx route.
+  \item \textbf{Reset codes in chat history.} The reply to \cmd{!password code} stays in the
+        user's encrypted DM with the bot. Anyone who can read that DM can already act as the
+        user. Users are told to keep the code outside Matrix too.
+  \item \textbf{Not yet verified on the test node:} encrypted uploads, the real nginx route,
+        and that held notices are readable on the user's first device.
 \end{itemize}

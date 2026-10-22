@@ -4,9 +4,11 @@ from adminbot.identity import (
     IdentityError,
     group_by_user,
     guest_user_id,
+    is_bot_account,
     is_local_user,
     normalize_email,
     user_id_for_email,
+    user_id_for_login,
 )
 
 DOMAINS = ["unibas.ch", "stud.unibas.ch"]
@@ -65,3 +67,20 @@ def test_is_local_user():
     assert not is_local_user("@a:evil.org", SERVER)
     assert not is_local_user("a", SERVER)
     assert not is_local_user(f"@:{SERVER}", SERVER)
+
+
+def test_user_id_for_login():
+    expected = f"@anna.beispiel:{SERVER}"
+    assert user_id_for_login("Anna.Beispiel", SERVER, DOMAINS) == expected
+    assert user_id_for_login(f" @anna.beispiel:{SERVER} ", SERVER, DOMAINS) == expected
+    assert user_id_for_login("anna.beispiel@stud.unibas.ch", SERVER, DOMAINS) == expected
+    assert user_id_for_login("guest.jane.doe", SERVER, DOMAINS) == f"@guest.jane.doe:{SERVER}"
+    assert user_id_for_login("@anna:evil.org", SERVER, DOMAINS) is None
+    assert user_id_for_login("anna@gmail.com", SERVER, DOMAINS) is None
+    assert user_id_for_login("anna beispiel", SERVER, DOMAINS) is None
+    assert user_id_for_login("", SERVER, DOMAINS) is None
+
+
+def test_is_bot_account():
+    assert is_bot_account(f"@bot.prof.quiz:{SERVER}")
+    assert not is_bot_account(f"@adminbot:{SERVER}") and not is_bot_account(f"@bob:{SERVER}")

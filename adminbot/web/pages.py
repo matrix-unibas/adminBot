@@ -1,4 +1,4 @@
-"""Minimal HTML for the signup/reset pages. Inline CSS, no external assets, all values escaped."""
+"""Minimal HTML for the signup/reset/recover pages. Inline CSS, no external assets, all values escaped."""
 from __future__ import annotations
 
 from html import escape
@@ -18,6 +18,8 @@ label{display:block;font-weight:600;margin:12px 0 4px}
 input{width:100%;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--fg);font:inherit}
 button{margin-top:20px;width:100%;padding:11px;border:0;border-radius:8px;background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer}
 .err{color:var(--err);font-weight:600}.muted{color:var(--muted);font-size:.9rem}
+.code{display:block;margin:8px 0 16px;padding:12px;border:2px dashed var(--accent);border-radius:8px;text-align:center;font:600 1.15rem/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;user-select:all}
+.box{border-left:4px solid var(--accent);padding:4px 0 4px 12px;margin:0 0 16px}
 """
 
 
@@ -61,7 +63,10 @@ def signup_form(user_id: UserID, token: str, nonce: str, min_length: int, error:
     return layout(t("web.title"), body)
 
 
-def reset_form(user_id: UserID, token: str, nonce: str, min_length: int, error: str | None = None) -> str:
+def reset_form(user_id: UserID, token: str, nonce: str, min_length: int, error: str | None = None,
+               self_service: bool = False) -> str:
+    """self_service: a link from !password, which keeps the user's sessions logged in."""
+    warning = t("web.reset.warning_self") if self_service else t("web.reset.warning")
     body = (
         f"<h1>{escape(t('web.title'))}</h1>"
         f"<p>{escape(t('web.reset.intro'))}<br><code>{escape(user_id)}</code></p>"
@@ -70,19 +75,55 @@ def reset_form(user_id: UserID, token: str, nonce: str, min_length: int, error: 
         f"<input type=\"hidden\" name=\"t\" value=\"{escape(token)}\">"
         f"<input type=\"hidden\" name=\"nonce\" value=\"{escape(nonce)}\">"
         f"{_password_fields(min_length)}"
-        f"<p class=\"muted\">{escape(t('web.reset.warning'))}</p>"
+        f"<p class=\"muted\">{escape(warning)}</p>"
         f"<button type=\"submit\">{escape(t('web.submit.reset'))}</button></form>"
     )
     return layout(t("web.title"), body)
 
 
-def done(user_id: UserID, login_url: str, key: str = "web.done") -> str:
+def recover_form(nonce: str, min_length: int, error: str | None = None, username: str = "") -> str:
+    """Set a new password with a reset code (no link, no one else involved)."""
+    body = (
+        f"<h1>{escape(t('web.recover.title'))}</h1>"
+        f"<p>{escape(t('web.recover.intro'))}</p>"
+        f"{_error(error)}"
+        "<form method=\"post\" action=\"\">"
+        f"<input type=\"hidden\" name=\"nonce\" value=\"{escape(nonce)}\">"
+        f"<label for=\"user\">{escape(t('web.username'))}</label>"
+        f"<input id=\"user\" name=\"username\" maxlength=\"255\" autocomplete=\"username\" autocapitalize=\"none\" "
+        f"spellcheck=\"false\" required value=\"{escape(username)}\">"
+        f"<p class=\"muted\">{escape(t('web.recover.username_hint'))}</p>"
+        f"<label for=\"code\">{escape(t('web.recover.code'))}</label>"
+        f"<input id=\"code\" name=\"code\" maxlength=\"64\" autocomplete=\"one-time-code\" autocapitalize=\"characters\" "
+        "spellcheck=\"false\" required>"
+        f"{_password_fields(min_length)}"
+        f"<p class=\"muted\">{escape(t('web.recover.warning'))}</p>"
+        f"<button type=\"submit\">{escape(t('web.submit.reset'))}</button></form>"
+        f"<p class=\"muted\">{escape(t('web.recover.no_code'))}</p>"
+    )
+    return layout(t("web.recover.title"), body)
+
+
+def done(user_id: UserID, login_url: str, key: str = "web.done", reset_code: str | None = None,
+         note_key: str | None = None) -> str:
+    """Success page. reset_code: shown once, with the advice to keep it. note_key: a closing
+    paragraph about encryption (set up the recovery key, or what to do when asked to verify)."""
     link = f"<a href=\"{escape(login_url)}\">{escape(login_url)}</a>" if login_url else ""
+    code = ""
+    if reset_code:
+        code = (
+            f"<p><strong>{escape(t('web.reset_code.title'))}</strong></p>"
+            f"<code class=\"code\">{escape(reset_code)}</code>"
+            f"<p class=\"muted\">{escape(t('web.reset_code.hint'))}</p>"
+        )
+    note = f"<p class=\"box\">{escape(t(note_key))}</p>" if note_key else ""
     body = (
         f"<h1>{escape(t('web.title'))}</h1>"
         f"<p>{escape(t(key))}</p>"
         f"<p>{escape(t('web.username'))}: <code>{escape(user_id)}</code></p>"
         f"<p>{escape(t('web.server'))}: {link}</p>"
+        f"{code}"
+        f"{note}"
         f"<p class=\"muted\">{escape(t('web.done_hint'))}</p>"
     )
     return layout(t("web.title"), body)

@@ -6,7 +6,7 @@
 
 maubot plugin `ch.unibas.dmi.marvin.adminbot`. The plan, with the design and its reasoning, is in [claude.md](claude.md). The server-side setup (account, nginx, backups, the second maubot for professor bots) is in the server repo: [matrix-unibas/server/docs/admin-bot-setup.md](https://github.com/matrix-unibas/matrix-unibas/blob/main/server/docs/admin-bot-setup.md).
 
-Professors and TAs talk to `@adminbot` in a direct chat. The bot reacts with 🤖 as soon as it starts on a command. `!help` lists what the sender may use; `!help <command>` (or `!<command> help`, `!<command> <sub> --help`) explains one command with its arguments, an example and the next steps:
+Professors and TAs talk to `@adminbot` in a direct chat. Everyone else on the server (students) can only use `!help` and `!password` there, for their own account; the bot ignores everything else they send. The bot reacts with 🤖 as soon as it starts on a command. `!help` lists what the sender may use; `!help <command>` (or `!<command> help`, `!<command> <sub> --help`) explains one command with its arguments, an example and the next steps:
 
 | Area | Commands |
 |---|---|
@@ -17,6 +17,7 @@ Professors and TAs talk to `@adminbot` in a direct chat. The bot reacts with �
 | Own bots | `!bot create / update / list / info / config / start / stop / delete` |
 | Admins | `!admin prof / audit / bots` |
 | Bulk changes | shown as a plan first, run with `!confirm <code>`, dropped with `!cancel` |
+| Own account (every user) | `!password` (reset link, sessions stay), `!password code` (new reset code) |
 | Help | `!help`, `!help <command> [<sub>]`, `!whoami` |
 
 User documentation: the handbook, as PDF from the latest release ([professors and TAs](https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-professors.pdf), [technical](https://github.com/matrix-unibas/adminBot/releases/latest/download/handbook-technical.pdf)); sources in [`handbook/`](handbook/) (see [Handbook](#handbook)).
@@ -28,14 +29,14 @@ maubot.yaml, base-config.yaml   plugin metadata and default instance config (bot
 adminbot/
   bot.py                        Plugin class: builds the services, self-check, registers handlers
   commands/base.py              CommandRouter (the only Matrix event handler) + @command + helpers
-  commands/*.py                 one class per command group
-  web/                          signup / reset pages (maubot webapp)
+  commands/*.py                 one class per command group (password.py: the public !password)
+  web/                          signup / reset / recover pages (maubot webapp)
   identity, parsing, roster,    pure logic, unit-tested without a server
   templates (parse/dump)
   synapse_admin, matrix_ops,    talk to Synapse
   attachments, userbots
-  signups, confirm, jobs,       services
-  authz, audit
+  signups, confirm, jobs,       services (signups: links and reset codes; notices: messages
+  authz, audit, notices         held until the user has a device)
   db, migrations                SQL (portable SQLite + Postgres)
   strings/en.py                 every user-facing text, incl. the detailed help per command
 tests/                          pytest (uses maubot's own test fixtures)
@@ -121,6 +122,11 @@ Checklist on the test node, which levels 1–3 can't cover:
 - [ ] The audit room receives the startup checks.
 - [ ] The 🤖 reaction appears right after sending a command, and multi-line replies (`!course info`, `!whoami`) show one item per line in Element.
 - [ ] Professor bots (Phase 8, `user_bots.enabled`): `!bot create` with an `.mbp` → approval in the audit room → the bot answers in the professor's room; `!bot delete` deactivates the account and removes the instance. Full steps: admin-bot-setup.md, section 7.5.
+- [ ] As a student (no role): `!help` lists only `!password` and `!password code`; `!course list` gets no answer; the link from `!password` changes the password and the Element session stays logged in.
+- [ ] `/recover` through nginx (production) or the tunnel: the code from the signup page works once, the page shows a new one, all sessions are logged out, and 5 wrong codes lock the account for the day.
+- [ ] A fresh signup: the success page shows a reset code; after the first login in Element, the welcome DM arrives within a minute and is **readable** (not "Unable to decrypt").
+- [ ] After `!signup reset` + using the link: the notice arrives after logging in again and is readable.
+- [ ] With I11 deployed: Element Web/Desktop forces setting up recovery after the first login. Check what Element X does.
 - [ ] A new professor bot shows as verified in Element (member list → the bot → its session has no red shield), `!bot info` says `Verified: yes`, and the bot answers in an *encrypted* room. After `!bot delete` and `!bot create` with the same name, it is verified again.
 
 ### Professor bots and E2EE
@@ -129,6 +135,21 @@ Right after creating a bot's maubot client, the provisioning job calls `POST /cl
 - The recovery key is stored in the bot DB (`bot_recovery_key`, keyed by the bot's user ID) and never shown to anyone. It is kept after `!bot delete`: a reactivated account still has its cross-signing keys on the server, so maubot answers `409 client_has_keys`, and the job signs the new device with `POST /client/<id>/verify` and the stored key.
 - If verification fails (crypto not available in userbots, keys created by someone else, ...), the bot is provisioned anyway; the owner gets a note, and the audit room gets the reason. `!bot delete` + `!bot create` tries again.
 - This assumes Synapse accepts the bot's *first* cross-signing key upload without user-interactive auth (MSC3967). Check this once on the test node (checklist above).
+
+## Passwords and encryption recovery
+
+The server sends no email, so the bot provides the "forgot password" paths (plan §4, v7):
+
+| Situation | Path | Sessions |
+|---|---|---|
+| Still logged in somewhere | `!password` in a DM with the bot: link for the sender's own account, valid `password.self_ttl_minutes` (60) | kept (`logout_devices: false`) |
+| Logged out everywhere, has the reset code | `/recover` page: username + reset code + new password, then a new code is shown | all logged out |
+| Neither | a bot admin: `!signup reset @user` (24 h) | all logged out |
+
+- **Reset codes**: 20 Crockford base32 characters, one per account (`reset_code` table, SHA-256 only). Shown once on the signup page and by `!password code`. Accounts created before 0.3.0 have none until the user sends `!password code`. `/recover` refuses an account for 24 h after `password.max_code_attempts` wrong codes (in memory).
+- **Notices wait for a device.** An encrypted message can only be read by devices that exist when it is sent. Right after signup, or after a reset that logged everyone out, the user has none. The welcome and the reset notices are therefore kept in `pending_notice` and sent once `/keys/query` shows a device with keys (checked at once, then every minute; dropped after `notices.max_age_days`).
+- **What the bot can't do:** restore old encrypted messages. Element's recovery key and the cross-signing private keys never leave the user's devices. Someone who lost both their sessions and the recovery key has to choose *Can't confirm?* → *Reset identity* in Element (needs the password, which the paths above provide). After that they can chat normally and show as verified, but older encrypted messages stay unreadable. The welcome DM, the reset notices and the handbook all explain this.
+- **Making people save the key (I11, infra):** Element Web/Desktop honour `"io.element.e2ee": {"secure_backup_required": true, "secure_backup_setup_methods": ["key"]}` in `/.well-known/matrix/client` and then don't let users skip setting up recovery. That file is served by host nginx, so the change belongs to the `matrix-unibas` repo (admin-bot-setup.md). Element X support still has to be checked on the test node.
 
 ## Releasing
 
@@ -140,18 +161,18 @@ Releases are made by CI (`.github/workflows/release.yml`), not by hand. Pushing 
 
 ```bash
 # 1. bump `version` in maubot.yaml, commit, push to main
-git tag v0.2.0 && git push origin v0.2.0
+git tag v0.3.0 && git push origin v0.3.0
 gh run watch                                              # or the Actions tab
 
 # 2. test exactly that file on the test node (checklist above)
-gh release download v0.2.0 --pattern '*.mbp'
+gh release download v0.3.0 --pattern '*.mbp'
 
 # 3. checklist passed: make it the latest release, then upload the same file to production
-gh release edit v0.2.0 --prerelease=false --latest
+gh release edit v0.3.0 --prerelease=false --latest
 ```
 
 - A pre-release never counts as *latest*, so the handbook links at the top of this README (`releases/latest/download/...`) always point to a release that passed the test node.
-- A failed release: fix it, delete the tag (`git push --delete origin v0.2.0 && git tag -d v0.2.0`) and the release, if one was created (`gh release delete v0.2.0`), then tag again.
+- A failed release: fix it, delete the tag (`git push --delete origin v0.3.0 && git tag -d v0.3.0`) and the release, if one was created (`gh release delete v0.3.0`), then tag again.
 - Every push to `main` and every PR runs the tests; changes under `handbook/` also build the PDFs (download them from the run's *Artifacts*).
 
 ## Slow replies

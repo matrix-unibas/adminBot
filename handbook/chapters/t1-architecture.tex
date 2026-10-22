@@ -70,8 +70,10 @@ plugin uses all three.
 \file{commands/*.py} & one class per command group (\cmd{course}, \cmd{invite}, \cmd{groups}, \dots) \\
 \file{authz.py} & roles and the single permission check \cmd{require(role, course)} \\
 \file{confirm.py}, \file{jobs.py} & plans with confirm codes; resumable, throttled job runner \\
-\file{signups.py}, \file{delivery.py} & signup and reset tokens, pending invites; CSV/inline delivery \\
-\file{web/} & signup and reset pages, rate limiter \\
+\file{signups.py}, \file{delivery.py} & signup and reset tokens, reset codes, pending invites; CSV/inline delivery \\
+\file{commands/password.py} & \cmd{!password} and \cmd{!password code}, the public commands for every user \\
+\file{notices.py} & messages held until the user has a device that can decrypt them \\
+\file{web/} & signup, reset and recover pages, rate limiter, per-account lock for reset codes \\
 \file{synapse_admin.py} & wrappers for the Synapse admin API \\
 \file{matrix_ops.py} & rooms, spaces, power levels, membership, DM check, sending \\
 \file{templates.py} & template schema, parse/dump, snapshot of a live course, apply \\
@@ -95,7 +97,10 @@ plugin uses all three.
         \begin{itemize}
           \item the message is text and starts with \cmd{!<name>};
           \item the sender is local and \emph{known} (admin, professor or staff of a course).
-                Everyone else is ignored without a reply;
+                Other local users (students) may only use the \emph{public} commands
+                (\cmd{!help}, \cmd{!password}, \cmd{!password code}), and only in a DM;
+                everything else they send, and anything outside a DM, is ignored without
+                a reply;
           \item the room is a DM between exactly the bot and the sender
                 (\autoref{sec:dm-rule}). Otherwise known users get \enquote{please DM me},
                 and unknown command names are ignored, because other bots in course rooms

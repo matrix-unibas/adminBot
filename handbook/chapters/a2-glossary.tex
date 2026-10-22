@@ -16,8 +16,16 @@
     Students 0, TAs 50 (moderator), course owner and bot 100 (admin).
   \item[End-to-end encryption] Messages are encrypted on the sender's device and can only be
     read by the members' devices, not by the server. Needs the recovery key on new devices.
-  \item[Recovery key] The key Element gives you when you set up secure backup. With it you can
-    read old encrypted messages on a new device or after a password reset.
+  \item[Recovery key] The key Element gives you when you set up recovery (secure backup). With
+    it you can read old encrypted messages on a new device or after a password reset. Created
+    on your device; the server never sees it, so nobody can restore it for you.
+  \item[Reset code] A code from the admin bot (on the signup page, or with
+    \cmd{!password code}). With it you can set a new \emph{password} on the reset page,
+    even when you are logged out everywhere. It doesn't unlock encrypted messages: that's
+    what the recovery key is for. Keep both.
+  \item[Reset identity] Element's way out when you can't confirm a new login (no other
+    device, no recovery key): it creates new encryption keys for your account. You can chat
+    normally afterwards, but older encrypted messages stay unreadable.
   \item[Signup link] A personal, single-use link that creates one account with a fixed
     username. Valid for 14 days.
   \item[Plan] The preview the bot shows before a bulk change. Nothing happens until you send

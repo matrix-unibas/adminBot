@@ -40,13 +40,14 @@ What you can do depends on your role. Roles are stored in the bot, not in Matrix
 Professor & a bot admin (\cmd{!admin prof add}) & create courses and own them; appoint TAs; templates; own bots \\
 Course owner & automatic: whoever creates the course & everything in that course, incl. archive and rollover \\
 TA & the course owner (\cmd{!course ta add}) & in that course only: invite people, signup links, roster, groups \\
-Bot admin & the server operators (bot configuration) & everything, in every course; approve bots; password resets; guests \\
+Bot admin & the server operators (bot configuration) & everything, in every course; approve bots; password resets for others; guests \\
 \bottomrule
 \end{tabularx}
 \end{center}
 
 A university email address alone gives no rights. Students have no role at all: the bot
-ignores them completely.
+only lets them manage their own password (\cmd{!password}, \autoref{sec:passwords}) and
+ignores everything else they send.
 
 \cmd{!whoami} shows your roles, and \cmd{!help} lists only the commands they allow.
 
