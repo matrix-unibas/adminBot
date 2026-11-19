@@ -52,6 +52,8 @@ def maubot_plugin_config_overrides() -> dict:
         "professors": [PROF],
         "server_name": SERVER,
         "startup": {"self_check": False},
+        # The fake client doesn't encrypt; test_sessions.py switches it on with a fake check.
+        "security": {"verified_sessions": False},
         "signup": {
             "public_base_url": BASE_URL,
             "login_url": "https://example.com",

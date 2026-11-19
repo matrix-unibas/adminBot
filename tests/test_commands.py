@@ -61,7 +61,7 @@ async def test_command_outside_dm_is_refused(bot, chat):
 async def test_help_depends_on_role(chat):
     admin_help = (await chat.send("!help", sender=ADMIN))[0]
     prof_help = (await chat.send("!help", sender=PROF))[0]
-    assert "`!admin prof|audit|bots`" in admin_help and "`!course create|" in admin_help
+    assert "`!admin prof|audit|bots|identity`" in admin_help and "`!course create|" in admin_help
     assert "!admin" not in prof_help and "`!course create|" in prof_help
     assert "**Courses and rooms**" in prof_help and "`!help <command>`" in prof_help
 

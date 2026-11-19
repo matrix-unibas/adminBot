@@ -19,6 +19,7 @@ from .jobs import JobRunner
 from .matrix_ops import MatrixOps
 from .migrations import upgrade_table
 from .notices import Notices
+from .sessions import SessionCheck
 from .signups import SignupService
 from .synapse_admin import SynapseAdmin
 from .userbots import BotManager, UserbotsClient
@@ -41,6 +42,7 @@ class AdminBot(Plugin):
     signups: SignupService
     notices: Notices
     uploads: PendingUploads
+    sessions: SessionCheck
     bots: BotManager | None
     router: CommandRouter
     # Names of startup checks that failed ("admin", "audit_room", "userbots", ...).
@@ -63,6 +65,7 @@ class AdminBot(Plugin):
         self.failed_checks = set()
         self.store = Store(self.database)
         self.synapse = SynapseAdmin(self.client, self.http)
+        self.sessions = SessionCheck(self)
         self._build_services()
         for professor in self.config["professors"] or []:
             await self.store.add_professor(professor, "config")

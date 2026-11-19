@@ -12,6 +12,7 @@ KEYS = [
     "archive_space",
     "language",
     "startup.self_check",
+    "security.verified_sessions",
     "identity.allowed_domains",
     "identity.bind_threepids",
     "signup.public_base_url",

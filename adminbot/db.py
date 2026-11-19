@@ -639,6 +639,21 @@ class Store:
     async def is_bot_account(self, user_id: UserID) -> bool:
         return await self.db.fetchval("SELECT 1 FROM bot_account WHERE user_id=$1", user_id) is not None
 
+    # --- pinned identities (sessions.py) ------------------------------------------------------
+
+    async def get_identity(self, user_id: UserID) -> str | None:
+        """The master cross-signing key staff commands are accepted from."""
+        return await self.db.fetchval("SELECT master_key FROM trusted_identity WHERE user_id=$1", user_id)
+
+    async def pin_identity(self, user_id: UserID, master_key: str, pinned_by: UserID | None) -> None:
+        """pinned_by: None when pinned on first use, else the admin who accepted it."""
+        q = (
+            "INSERT INTO trusted_identity (user_id, master_key, pinned_at, pinned_by) VALUES ($1, $2, $3, $4) "
+            "ON CONFLICT (user_id) DO UPDATE SET master_key=excluded.master_key, pinned_at=excluded.pinned_at, "
+            "pinned_by=excluded.pinned_by"
+        )
+        await self.db.execute(q, user_id, master_key, now_ms(), pinned_by)
+
     async def get_bot_recovery_key(self, user_id: UserID) -> str | None:
         return await self.db.fetchval("SELECT recovery_key FROM bot_recovery_key WHERE user_id=$1", user_id)
 

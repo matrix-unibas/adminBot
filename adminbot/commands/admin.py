@@ -1,4 +1,4 @@
-"""!admin: professor allowlist, audit, professor-bot approval. Admins only."""
+"""!admin: professor allowlist, audit, professor-bot approval, pinned identities. Admins only."""
 from __future__ import annotations
 
 from maubot import MessageEvent
@@ -8,6 +8,7 @@ from ..audit import format_entry
 from ..authz import Role
 from ..errors import NotFound, ValidationError
 from ..parsing import ArgError, split_args
+from ..sessions import fingerprint
 from ..strings import t
 from .base import CommandGroup, command
 
@@ -111,3 +112,39 @@ class AdminCommands(CommandGroup):
                                             bots=", ".join(names))
         else:
             raise ArgError("err.bad_args", usage=usage)
+
+    @command("admin", "identity", usage="usage.admin.identity", role=Role.ADMIN, needs=())
+    async def identity(self, evt: MessageEvent, args: str) -> None:
+        """Staff commands are accepted from one identity per user (sessions.py). After a
+        legitimate "Reset identity" an admin accepts the new one, having checked with the
+        person (in person or by phone) that they reset it themselves."""
+        await self.require(evt, Role.ADMIN)
+        usage = t("usage.admin.identity")
+        a = split_args(args, usage=usage)
+        accept = (a.get(0) or "").lower() == "accept"
+        user = self.user_arg(a.get(1) if accept else a.get(0))
+        pinned = await self.bot.store.get_identity(user)
+        current = await self.bot.sessions.current_master_key(user)
+        if not accept:
+            if current is None:
+                state = t("msg.identity_state_none")
+            elif pinned is None:
+                state = t("msg.identity_state_unpinned")
+            elif pinned == current:
+                state = t("msg.identity_state_ok")
+            else:
+                state = t("msg.identity_state_changed", user_id=user)
+            await self.reply(evt, "msg.identity_show", user_id=user, pinned=fingerprint(pinned),
+                             current=fingerprint(current), state=state)
+            return
+        if current is None:
+            raise ValidationError("err.identity_none", user_id=user)
+        if current == pinned:
+            await self.reply(evt, "msg.identity_already", user_id=user)
+            return
+        await self.bot.store.pin_identity(user, current, evt.sender)
+        await self.bot.audit.log(evt.sender, "identity.accept", target_count=1)
+        await self.bot.audit.post(t("msg.identity_accepted_audit", user_id=user, actor=evt.sender,
+                                    fingerprint=fingerprint(current)))
+        await self.reply(evt, "msg.identity_accepted", user_id=user, fingerprint=fingerprint(current))
+        await self.bot.notices.tell(user, evt.sender, "msg.notice.identity_accepted")

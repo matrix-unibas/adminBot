@@ -228,6 +228,19 @@ class CommandRouter:
             return False
         return await self.bot.ops.is_dm(evt.room_id, evt.sender)
 
+    async def _session_ok(self, evt: MessageEvent) -> bool:
+        """Staff commands and uploads only from a verified session of the pinned identity
+        (sessions.py). Says what to do if not."""
+        try:
+            await self.bot.sessions.require(evt.room_id, evt.event_id, evt.sender)
+            return True
+        except Exception as e:
+            if not isinstance(e, AdminBotError):
+                log.exception(f"Session check for {evt.sender} failed")
+            log.info(f"Refused {evt.event_id} from {evt.sender}: {type(e).__name__}")
+            await self.bot.ops.send(evt.room_id, describe(e))
+            return False
+
     async def _ack(self, evt: MessageEvent) -> None:
         """React with ACK_REACTION. Never fails the command."""
         try:
@@ -303,6 +316,8 @@ class CommandRouter:
         if public_only and not spec.public:
             await self.bot.ops.send(evt.room_id, t("err.forbidden_public", command=spec.label))
             return
+        if not spec.public and not await self._session_ok(evt):
+            return
         failed = [check for check in spec.needs if check in self.bot.failed_checks]
         if failed:
             await self.bot.ops.send(evt.room_id, t("err.check_failed", check=", ".join(failed)))
@@ -329,6 +344,8 @@ class CommandRouter:
             return
         if not await self._allowed_sender(evt.sender) or not await self._in_dm(evt):
             return
+        if not await self._session_ok(evt):
+            return  # the bot keeps waiting: the file can be sent again from a verified session
         waiting = self.bot.uploads.take(evt.room_id, evt.sender)
         if waiting is None:
             return

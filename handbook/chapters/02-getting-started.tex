@@ -63,6 +63,20 @@ type a command in a course room, the bot asks you to use the direct chat instead
 invite other people into your chat with the bot.
 \end{note}
 
+\begin{note}[Only from a verified session]
+Professors, TAs and admins can use the bot only from a \emph{verified} session: Element asks
+you to verify every new login with another logged-in device or your recovery key. If you
+haven't set up recovery yet, do it now (\ui{Settings} $\rightarrow$ \ui{Encryption}
+$\rightarrow$ \ui{Set up recovery}); that also verifies the session you are using. Otherwise
+the bot answers \enquote{I only accept staff commands from a verified session}.
+\smallskip
+
+Why: a password alone is enough to log in, so without this, anyone who learns your password
+could use your rights in the bot. For the same reason, after \ui{Reset identity} in Element
+the bot waits until a bot admin has confirmed with you that it was you
+(\autoref{sec:troubleshooting-messages}).
+\end{note}
+
 \section{How the bot answers}
 \label{sec:answers}
 
