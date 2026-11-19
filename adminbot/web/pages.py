@@ -20,6 +20,8 @@ button{margin-top:20px;width:100%;padding:11px;border:0;border-radius:8px;backgr
 .err{color:var(--err);font-weight:600}.muted{color:var(--muted);font-size:.9rem}
 .code{display:block;margin:8px 0 16px;padding:12px;border:2px dashed var(--accent);border-radius:8px;text-align:center;font:600 1.15rem/1.4 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;user-select:all}
 .box{border-left:4px solid var(--accent);padding:4px 0 4px 12px;margin:0 0 16px}
+.step{color:var(--muted);font-size:.85rem;font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px}
+button.secondary{background:transparent;color:var(--accent);border:1px solid var(--border);margin-top:12px}
 """
 
 
@@ -104,25 +106,61 @@ def recover_form(nonce: str, min_length: int, error: str | None = None, username
     return layout(t("web.recover.title"), body)
 
 
-def done(user_id: UserID, login_url: str, key: str = "web.done", reset_code: str | None = None,
-         note_key: str | None = None) -> str:
-    """Success page. reset_code: shown once, with the advice to keep it. note_key: a closing
-    paragraph about encryption (set up the recovery key, or what to do when asked to verify)."""
+def _code_form(user_id: UserID, nonce: str, after: str) -> str:
+    """Hidden fields of the reset-code steps (see SignupWeb.code_submit)."""
+    return (
+        "<form method=\"post\" action=\"code\">"
+        f"<input type=\"hidden\" name=\"user\" value=\"{escape(user_id)}\">"
+        f"<input type=\"hidden\" name=\"after\" value=\"{escape(after)}\">"
+        f"<input type=\"hidden\" name=\"nonce\" value=\"{escape(nonce)}\">"
+    )
+
+
+def show_code(user_id: UserID, code: str, nonce: str, after: str) -> str:
+    """Step 1 of 2: the reset code, shown once. after: 'signup' or 'reset' (what just happened)."""
+    body = (
+        f"<p class=\"step\">{escape(t('web.code.step', n=1))}</p>"
+        f"<h1>{escape(t('web.reset_code.title'))}</h1>"
+        f"<p>{escape(t('web.code.created' if after == 'signup' else 'web.code.password_set'))}</p>"
+        f"<p>{escape(t('web.username'))}: <code>{escape(user_id)}</code></p>"
+        f"<code class=\"code\">{escape(code)}</code>"
+        f"<p>{escape(t('web.reset_code.hint'))}</p>"
+        f"<p class=\"box\">{escape(t('web.code.not_recovery_key'))}</p>"
+        f"{_code_form(user_id, nonce, after)}"
+        f"<button type=\"submit\" name=\"action\" value=\"ask\">{escape(t('web.code.next'))}</button></form>"
+    )
+    return layout(t("web.reset_code.title"), body)
+
+
+def confirm_code(user_id: UserID, nonce: str, after: str, error: str | None = None) -> str:
+    """Step 2 of 2: type the saved code back in (or get a new one)."""
+    body = (
+        f"<p class=\"step\">{escape(t('web.code.step', n=2))}</p>"
+        f"<h1>{escape(t('web.code.confirm.title'))}</h1>"
+        f"<p>{escape(t('web.code.confirm.intro'))}</p>"
+        f"{_error(error)}"
+        f"{_code_form(user_id, nonce, after)}"
+        f"<label for=\"code\">{escape(t('web.recover.code'))}</label>"
+        f"<input id=\"code\" name=\"code\" maxlength=\"64\" autocomplete=\"off\" autocapitalize=\"characters\" "
+        "spellcheck=\"false\" required autofocus>"
+        f"<button type=\"submit\" name=\"action\" value=\"check\">{escape(t('web.code.confirm.submit'))}</button>"
+        f"<button type=\"submit\" name=\"action\" value=\"new\" class=\"secondary\" formnovalidate>"
+        f"{escape(t('web.code.new'))}</button></form>"
+        f"<p class=\"muted\">{escape(t('web.code.new_hint'))}</p>"
+    )
+    return layout(t("web.code.confirm.title"), body)
+
+
+def done(user_id: UserID, login_url: str, key: str = "web.done", note_key: str | None = None) -> str:
+    """Success page. note_key: a closing paragraph about encryption (set up the recovery key, or
+    what to do when asked to verify)."""
     link = f"<a href=\"{escape(login_url)}\">{escape(login_url)}</a>" if login_url else ""
-    code = ""
-    if reset_code:
-        code = (
-            f"<p><strong>{escape(t('web.reset_code.title'))}</strong></p>"
-            f"<code class=\"code\">{escape(reset_code)}</code>"
-            f"<p class=\"muted\">{escape(t('web.reset_code.hint'))}</p>"
-        )
     note = f"<p class=\"box\">{escape(t(note_key))}</p>" if note_key else ""
     body = (
         f"<h1>{escape(t('web.title'))}</h1>"
         f"<p>{escape(t(key))}</p>"
         f"<p>{escape(t('web.username'))}: <code>{escape(user_id)}</code></p>"
         f"<p>{escape(t('web.server'))}: {link}</p>"
-        f"{code}"
         f"{note}"
         f"<p class=\"muted\">{escape(t('web.done_hint'))}</p>"
     )

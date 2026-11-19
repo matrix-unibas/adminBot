@@ -186,6 +186,11 @@ class SignupService:
         await self.store.set_reset_code(user_id, hash_reset_code(code))
         return code
 
+    async def reset_code_matches(self, user_id: UserID, code: str) -> bool:
+        """For the 'did you save it?' step after a code is shown. Doesn't use the code up."""
+        stored = await self.store.get_reset_code(user_id)
+        return stored is not None and hmac.compare_digest(stored, hash_reset_code(code))
+
     async def recover(self, user_id: UserID, code: str, password: str) -> str:
         """/recover: check the code, set the password (all sessions logged out), issue a new code.
         Raises ValidationError("web.error.recover_invalid") for a wrong code or unknown user, without

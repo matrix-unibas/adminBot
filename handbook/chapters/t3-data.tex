@@ -46,7 +46,11 @@ forms' CSRF nonces. Forms opened before a restart therefore have to be reloaded.
   \item \textbf{The audit log} stores user IDs and counts, never email lists or message
         contents.
   \item \textbf{Reset codes} are shown once (signup page, \cmd{!password code} reply, the
-        page after using one) and stored only as a hash. The reply to \cmd{!password code}
+        page after using one) and stored only as a hash. The page that asks for the code
+        again (\cmd{POST /code}) compares hashes and doesn't use the code up; it works with a
+        nonce bound to the account and to the code shown, so only the browser that just set
+        the password can use it, for at most an hour after the code was first shown, and no
+        longer once the code changes in any other way. The reply to \cmd{!password code}
         stays in the user's encrypted DM with the bot.
   \item \textbf{In Synapse}, each new account gets its email address(es) bound as threepids.
         That is deliberate: without a university directory, the email address is the only

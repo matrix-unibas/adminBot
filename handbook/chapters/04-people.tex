@@ -170,7 +170,9 @@ Your sessions stay logged in. \dots
 
 \begin{description}[style=nextline,leftmargin=1.5em,font=\normalfont\bfseries]
   \item[Reset code]
-    Shown once on the signup page when the account is created. \cmd{!password code} gives a
+    Shown once on the signup page when the account is created; the next page asks for it
+    again, so nobody clicks past it without saving it (\enquote{I didn't save it} shows a new
+    one). \cmd{!password code} gives a
     new one (the old one stops working); people with accounts from before version 0.3 get
     their first code this way. Each code works once. It must be kept outside Matrix, in a
     password manager or on paper, because whoever needs it can't read their chats.

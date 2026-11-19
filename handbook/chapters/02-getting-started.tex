@@ -23,10 +23,13 @@ You need three things:
         manager or on paper. Course rooms and your chat with the bot are end-to-end
         encrypted. Without the key, a new device or a password reset means you can't read
         old messages any more, and nobody can get them back for you.
-  \item \textbf{Reset code} (from the bot). The signup page shows it once. With it you can
-        set a new password yourself if you forget yours, even when you are logged out
-        everywhere. Lost it? Send \cmd{!password code} to the bot for a new one.
+  \item \textbf{Reset code} (from the bot). The signup page shows it once and then asks you
+        to type it in again, to check that you saved it. With it you can set a new password
+        yourself if you forget yours, even when you are logged out everywhere. Lost it? Send
+        \cmd{!password code} to the bot for a new one.
 \end{itemize}
+They are not the same: the reset code gets you back into your \emph{account}, the recovery
+key lets you read your \emph{messages} afterwards.
 Keep both \emph{outside} Matrix: when you need them, you can't read your chats.
 \autoref{sec:passwords} explains what to do if you lose one of them.
 \end{warning}

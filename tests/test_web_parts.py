@@ -11,7 +11,7 @@ from adminbot.signups import (
     new_token,
     normalize_reset_code,
 )
-from adminbot.web.pages import done, recover_form, signup_form
+from adminbot.web.pages import confirm_code, done, recover_form, show_code, signup_form
 from adminbot.web.ratelimit import FailureCounter, RateLimiter, client_ip, parse_networks
 
 
@@ -91,7 +91,11 @@ def test_signup_form_escapes():
 def test_recover_form_and_done_page_escape():
     html = recover_form("n", 12, error="<b>", username='"><script>')
     assert "<script>" not in html and "&lt;b&gt;" in html
-    html = done("@x:y", "https://example.com", reset_code="<i>", note_key="web.done_verify")
+    html = done('@x:y"><i>', "https://example.com", note_key="web.done_verify")
+    assert "<i>" not in html and "&lt;i&gt;" in html
+    html = show_code('@x:y"><i>', "<i>", '"><i>', "signup")
+    assert "<i>" not in html and "&lt;i&gt;" in html
+    html = confirm_code('@x:y"><i>', '"><i>', "reset", error="<i>")
     assert "<i>" not in html and "&lt;i&gt;" in html
 
 

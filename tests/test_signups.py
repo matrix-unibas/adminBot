@@ -173,6 +173,7 @@ async def web_client(bot):
     app.router.add_get("/reset", pages.reset_form)
     app.router.add_get("/recover", pages.recover_form)
     app.router.add_post("/recover", pages.recover_submit)
+    app.router.add_post("/code", pages.code_submit)
     async with TestClient(TestServer(app)) as client:
         yield client, pages
 
@@ -196,12 +197,14 @@ async def test_signup_pages(bot, web_client):
 
     resp = await client.post(f"/signup?t={raw}", data={**form, "confirm": "a" * 12})
     text = await resp.text()
-    assert resp.status == 200 and "ready" in text
+    assert resp.status == 200 and "account is created" in text and "Step 1 of 2" in text
     bot.synapse.create_user.assert_awaited_once()
-    # The first reset code is shown once, with the advice to set up Element's recovery key.
-    code = re.search(r'class="code">([0-9A-Z-]{24})<', text).group(1)
+    # The first reset code is shown once; the account is only "ready" after it was typed back in.
+    code = shown_code(text)
     assert await bot.store.get_reset_code(NEW) == hash_reset_code(code)
-    assert "set up recovery" in text
+    assert "not Element&#x27;s recovery key" in text
+    text = await walk_code_steps(client, pages, NEW, "signup", code)
+    assert "ready" in text and "set up recovery" in text
 
     resp = await client.get(f"/signup?t={raw}")
     assert resp.status == 400
@@ -220,6 +223,59 @@ async def test_reset_page_warning_depends_on_who_asked(bot, web_client):
     assert "stay logged in" in await (await client.get(f"/reset?t={own}")).text()
     by_admin = raw_token(await bot.signups.create_reset(STUDENT, ADMIN))
     assert "will be logged out" in await (await client.get(f"/reset?t={by_admin}")).text()
+
+
+def shown_code(html: str) -> str:
+    return re.search(r'class="code">([0-9A-Z-]{24})<', html).group(1)
+
+
+async def walk_code_steps(client, pages, user_id, after, code) -> str:
+    """Step 1 'I saved it' -> step 2 type the code in -> the final page (returned)."""
+    fields = {"user": user_id, "after": after, "nonce": pages.code_nonce(user_id, after, hash_reset_code(code))}
+    resp = await client.post("/code", data={**fields, "action": "ask"})
+    assert resp.status == 200 and "Step 2 of 2" in await resp.text()
+    resp = await client.post("/code", data={**fields, "action": "check", "code": code.lower().replace("-", "")})
+    assert resp.status == 200
+    return await resp.text()
+
+
+async def test_reset_code_must_be_typed_back_in(bot, web_client):
+    client, pages = web_client
+    code = await bot.signups.issue_reset_code(NEW)
+    first = pages.code_nonce(NEW, "signup", hash_reset_code(code))
+    fields = {"user": NEW, "after": "signup", "nonce": first}
+
+    resp = await client.post("/code", data={**fields, "action": "check", "code": "WRONG"})
+    text = await resp.text()
+    assert resp.status == 400 and "not the code" in text and "Step 2 of 2" in text
+
+    # Didn't save it: a new code replaces the old one, back to step 1.
+    resp = await client.post("/code", data={**fields, "action": "new"})
+    text = await resp.text()
+    new_code = shown_code(text)
+    assert resp.status == 200 and "Step 1 of 2" in text and new_code != code
+    assert not await bot.signups.reset_code_matches(NEW, code)
+    # The new page keeps the first issue time: using the steps never extends their life.
+    renewed = re.search(r'name="nonce" value="([^"]+)"', text).group(1)
+    assert renewed.split(".")[0] == first.split(".")[0] and renewed != first
+    # The page from before the new code is dead (it was bound to the old code).
+    resp = await client.post("/code", data={**fields, "action": "new"})
+    assert resp.status == 400 and "expired" in await resp.text()
+    assert "ready" in await walk_code_steps(client, pages, NEW, "signup", new_code)
+
+    # Only for the account and context the nonce was made for, and only for a while.
+    fields["nonce"] = renewed
+    current = hash_reset_code(new_code)
+    for forged in ({**fields, "user": STUDENT}, {**fields, "after": "reset"}, {**fields, "nonce": "1.forged"},
+                   {**fields, "nonce": pages.code_nonce(NEW, "signup", current, issued=0)}):
+        resp = await client.post("/code", data={**forged, "action": "new"})
+        assert resp.status == 400 and "expired" in await resp.text()
+    assert await bot.signups.reset_code_matches(NEW, new_code)
+
+    # A code change elsewhere (here: !password code) kills the page too.
+    await bot.signups.issue_reset_code(NEW)
+    resp = await client.post("/code", data={**fields, "action": "ask"})
+    assert resp.status == 400
 
 
 def recover_form(pages, username, code, password="correct horse battery"):
@@ -248,9 +304,11 @@ async def test_recover_page(bot, web_client):
 
     resp = await client.post("/recover", data=recover_form(pages, "student@unibas.ch", code))
     text = await resp.text()
-    assert resp.status == 200 and "new password is set" in text and "Reset identity" in text
-    new_code = re.search(r'class="code">([0-9A-Z-]{24})<', text).group(1)
+    assert resp.status == 200 and "new password is set" in text and "Step 1 of 2" in text
+    new_code = shown_code(text)
     assert new_code != code
+    text = await walk_code_steps(client, pages, STUDENT, "reset", new_code)
+    assert "new password is set" in text and "Reset identity" in text
     bot.synapse.reset_password.assert_awaited_once_with(STUDENT, "correct horse battery", logout_devices=True)
 
 
