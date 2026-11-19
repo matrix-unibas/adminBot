@@ -581,10 +581,10 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 | I3 | deferred for the main maubot; `userbots` has its own random pickle key and no `registration_secrets` |
 | I6 | done (Phase 0) |
 | I7 | in the repo, rolling out (admin-bot-setup.md §7) |
-| I8 | open: `enable_registration` is still `true` |
+| I8 | done in the repo (`matrix-unibas` 75cd8a2, `enable_registration: false`) |
 | I9 | done (`startup.md` updated) |
 | I11 | open (v7): well-known `secure_backup_required` |
-| I12 | open (1.1.0): own Postgres role for `userbots` (**before professors upload bots**) |
+| I12 | in the repo (`matrix-unibas` 5eb7a74, admin-bot-setup.md §8); roll out **before professors upload bots** |
 
 **I1. Public route for the signup page** (`server/nginx/matrix.conf`)
 - Host nginx sends everything matching `^(/_matrix|…)` to Synapse, so `/_matrix/maubot/...` currently returns a Synapse 404.
