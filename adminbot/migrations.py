@@ -215,3 +215,17 @@ async def upgrade_v4(conn: Connection, scheme: Scheme) -> None:
         "SELECT DISTINCT user_id, 0 FROM user_bot "
         "UNION SELECT user_id, 0 FROM bot_recovery_key"
     )
+
+
+@upgrade_table.register(description="Pinned identities for staff commands")
+async def upgrade_v5(conn: Connection, scheme: Scheme) -> None:
+    # Staff commands are only accepted from sessions signed by this master cross-signing key
+    # (sessions.py). Pinned on first use; an admin accepts a new one after an identity reset.
+    await conn.execute(
+        """CREATE TABLE trusted_identity (
+            user_id    TEXT PRIMARY KEY,
+            master_key TEXT NOT NULL,
+            pinned_at  BIGINT NOT NULL,
+            pinned_by  TEXT
+        )"""
+    )

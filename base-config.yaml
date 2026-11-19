@@ -26,6 +26,14 @@ startup:
   # Run the startup self-check (§2). Only switched off in tests.
   self_check: true
 
+security:
+  # Staff commands (everything except !help and !password) only from encrypted messages sent
+  # by a session that its owner verified, and only while the owner's identity is the one the
+  # bot first saw. A stolen password then isn't enough to command the bot. After a legitimate
+  # "Reset identity" an admin runs `!admin identity accept @user`. Switch off only for setups
+  # without encryption (the local dev stack, tests).
+  verified_sessions: true
+
 identity:
   # Email domains that may get accounts. The same localpart on any of them is one account.
   allowed_domains:

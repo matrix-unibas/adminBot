@@ -7,7 +7,8 @@ The bot's Matrix account \cmd{@adminbot} is the only privileged identity in the 
 has Synapse's server-admin flag; professors and TAs never get credentials of any kind.
 maubot holds the account's access token and device (created once with \cmd{mbc auth}, see
 the setup guide). All requests go to \cmd{http://synapse:8008} on the Docker network, so the
-IP allowlist that host nginx applies to \cmd{/_synapse/admin} doesn't affect the bot.
+bot doesn't depend on the public route: host nginx refuses \cmd{/_synapse/admin} for everyone
+(403); admins reach it with Ketesa through the SSH tunnel.
 
 The plugin doesn't need Synapse's registration shared secret: accounts are created with the
 admin API and the bot's own token.
@@ -23,7 +24,7 @@ All calls go through mautrix (\cmd{client.api.request} with \cmd{SynapseAdminPat
 \textbf{Endpoint} & \textbf{Used for} \\
 \midrule
 \cmd{GET /_synapse/admin/v2/users/<id>} & does an account exist; is the bot a server admin (startup) \\
-\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); rename a deleted bot (\enquote{\dots{} -- removed}), lock and unlock its account (\cmd{locked}); reactivate bots deleted before 0.3.3; set \cmd{user_type: bot} on the bot itself at startup and on reused professor-bot accounts. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
+\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); rename a deleted bot (\enquote{\dots{} -- removed}), lock and unlock its account (\cmd{locked}); reactivate bots deleted before 1.1.0; set \cmd{user_type: bot} on the bot itself at startup and on reused professor-bot accounts. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
 \cmd{POST /_synapse/admin/v1/reset_password/<id>} & reset links and reset codes. \cmd{logout_devices} is \cmd{true} for links from an admin and for \cmd{/recover}, \cmd{false} for links from \cmd{!password} (the user proved they hold a session, which keeps its keys) \\
 \cmd{GET /_synapse/admin/v2/users/<id>/devices}, \cmd{POST .../delete_devices} & deleting a professor bot logs out all its sessions before the account is locked \\
 \cmd{GET /_synapse/admin/v1/rooms/<room>} & room names for the owner's list of rooms a deleted bot is still in \\

@@ -19,6 +19,7 @@ STRINGS: dict[str, str] = {
     "usage.admin.prof": "`!admin prof add|remove|list [@user]`: who counts as a professor",
     "usage.admin.audit": "`!admin audit [n]`: the last n audit entries",
     "usage.admin.bots": "`!admin bots pending|show <id>|approve <id>|reject <id> [reason]|disable-all`: bot requests and the kill switch",
+    "usage.admin.identity": "`!admin identity [accept] @user`: which encryption identity staff commands are accepted from",
     "usage.course.create": '`!course create <code> "<title>" [--semester HS26] [--template <name>]`: new course',
     "usage.course.list": "`!course list`: your courses",
     "usage.course.info": "`!course info <code>`: staff, rooms, numbers of a course",
@@ -66,7 +67,7 @@ STRINGS: dict[str, str] = {
     # --- help per command group (shown by !help <command>) ------------------------------------
     # one line per command in the !help overview (commands with subcommands)
     "help.summary.password": "set a new password for your account, or get a reset code",
-    "help.summary.admin": "professors, audit log, bot requests",
+    "help.summary.admin": "professors, audit log, bot requests, identities",
     "help.summary.course": "create and manage courses, TAs, archive, new semester",
     "help.summary.room": "add or remove rooms in a course",
     "help.summary.roster": "compare a course with the official list of participants",
@@ -468,6 +469,17 @@ Packages may only contain source code, text files, images and fonts, so everythi
 To see and manage the running bots, use the `!bot` commands; as a bot admin they work on every professor's bots: `!bot list`, `!bot info|start|stop|config|delete <bot>`, `!bot delete all [@owner]`. See `!help bot delete`.
 
 **Who:** bot admins.""",
+    "help.admin.identity": """Staff commands (everything except `!help` and `!password`) are only accepted from a session its owner verified, and only from the encryption identity I saw first for that person. A password alone is enough to log in *and* to *Reset identity* in Element, so without this, anyone who learns a professor's or admin's password could use their rights here.
+- `!admin identity @user`: the accepted and the current identity (key fingerprints), and whether their commands go through
+- `!admin identity accept @user`: accept their current identity, e.g. after they lost all sessions and their recovery key and had to reset it (the person is told)
+
+**Before accepting**, check with the person directly (in person or by phone, not through Matrix) that they reset their identity themselves. If they didn't, someone else knows their password: issue a reset link (`!signup reset @user`) and log out their other sessions (Ketesa).
+
+When someone's identity changes, the audit room is told the first time they send a command.
+
+**Example:** `!admin identity accept @max.muster:matrix.dmi.unibas.ch`
+
+**Who:** bot admins.""",
     # --- errors -------------------------------------------------------------------------------
     "err.not_dm": "Please send me commands in a direct chat that only you and I are in. Commands can contain email addresses and signup links, so I don't answer them in shared rooms.\nStart a direct chat with {bot} and send the command there.",
     "err.forbidden": "You are not allowed to do that. `!whoami` shows your roles, `!help` the commands they allow.",
@@ -537,6 +549,10 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "err.bot_unchanged": "{name} already runs exactly this file (version {version}). If you changed the code, raise `version:` in maubot.yaml, run `mbc build` again and send the new .mbp.",
     "err.bot_no_recovery_key": "the account already has cross-signing keys, but I have no recovery key for them",
     "err.bot_package_gone": "The package of request #{id} is no longer stored: only open requests and each bot's running version are kept. `!bot list` shows the bots.",
+    "err.session_unencrypted": "I only accept staff commands in an encrypted chat, and this one isn't encrypted. Start a new direct chat with me (Element encrypts direct chats by default) and send the command there.",
+    "err.session_unverified": "I only accept staff commands from a verified session, and the one you're using isn't verified.\n**How to fix it:** in Element, verify this session with another session where you're logged in, or with your recovery key (Element asks after login; later: Settings → Sessions). If you never set up recovery: Settings → Encryption → *Set up recovery*, which also verifies this session. Then send the command again.\nWhy: a password alone is enough to log in, so without this, anyone who learns your password could use your rights here.",
+    "err.identity_changed": "Your encryption identity changed since you last used me (e.g. after *Reset identity* in Element), so I don't accept staff commands from it yet: a reset only needs the password, so someone who learned yours could have done it.\n**How to fix it:** ask a bot admin to accept your new identity. They will check with you directly that it was you. The bot admins were told.",
+    "err.identity_none": "I have no encryption identity of {user_id} yet. They have to set up recovery in Element (Settings → Encryption) and send me a command from that session first.",
     "err.bot_request_unknown": "There is no open bot request #{id}. `!admin bots pending` lists the open ones.",
     "err.mbp_invalid": "That is not a usable maubot plugin: {detail}.",
     "err.mbp_dependencies": "The plugin needs Python packages that this server doesn't have: {deps}. Plugins can only use the packages that come with maubot. Remove the dependency from maubot.yaml (and from your code), or ask a bot admin whether it can be added to the server.",
@@ -677,6 +693,15 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "msg.bot_ready": "Your bot **{name}** is running as {user_id} (plugin `{plugin_id}`).\n\n**Next steps**\n- Invite {user_id} to a room (room info, then *Invite*); it joins by itself.\n- `!bot info {name}` shows its status, `!bot config {name}` its settings.",
     "msg.bot_unverified": "Note: I couldn't verify the bot's device. It works, but Element marks it as unverified, and in encrypted rooms some clients may not let it read messages. The bot admins were told; you don't need to do anything.",
     "msg.bot_account_foreign_audit": "Refused to use {user_id} for a professor bot: the account exists, but I didn't create it. Accounts starting with `bot.` are reserved for professor bots; check who created it (e.g. in Ketesa) and deactivate it if it isn't needed.",
+    "msg.identity_changed_audit": "⚠️ {user_id} sent a staff command from a **new encryption identity** (accepted: `{old}`, now: `{new}`). Their staff commands are refused until an admin accepts it. A *Reset identity* in Element only needs the password, so check with the person directly (in person or by phone, not through Matrix) that they did it, then `!admin identity accept {user_id}`. If they didn't, their password is known to someone else: `!signup reset {user_id}` and log out their sessions in Ketesa.",
+    "msg.identity_show": "**Identity of {user_id}**\nAccepted: `{pinned}`\nCurrent: `{current}`\n{state}",
+    "msg.identity_state_none": "I have no encryption identity of this user (no recovery set up, or no encrypted message to me yet).",
+    "msg.identity_state_unpinned": "Nothing accepted yet: their next staff command from a verified session pins the current identity.",
+    "msg.identity_state_ok": "Staff commands from their verified sessions are accepted.",
+    "msg.identity_state_changed": "**Changed:** their staff commands are refused. Check with the person directly that they reset it, then `!admin identity accept {user_id}`.",
+    "msg.identity_accepted_audit": "{actor} accepted the new encryption identity of {user_id} (`{fingerprint}`).",
+    "msg.identity_already": "The current identity of {user_id} is already the accepted one. Nothing changed.",
+    "msg.identity_accepted": "Accepted the new identity of {user_id} (`{fingerprint}`). Their staff commands work again from sessions verified with it. They were told.",
     "msg.bot_unverified_audit": "Couldn't cross-sign professor bot {user_id}: {detail}\nThe bot runs, but unverified. `!bot delete` and `!bot create` try again; see README, *Professor bots and E2EE*.",
     "msg.bot_updated": "Bot **{name}** now runs version {version}.",
     "msg.bot_list": "**Bots of {owner}** ({count})\n{bots}",
@@ -701,6 +726,7 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     # --- notices: changes someone else made to your roles, courses or bots (Notices.tell) -------
     "msg.notice.prof_added": "**You are now a professor** on this server ({actor} added you). You can create courses (`!course create`), appoint TAs and request your own bots.\n\nSend me `!help` to see what you can do. Commands go here, in our direct chat.",
     "msg.notice.prof_removed": "**You are no longer a professor** on this server ({actor} removed you). You can't create new courses or bots any more. Courses you own stay yours. Bots you already have keep running, but only a bot admin can change them now. If this is a mistake, contact {actor}.",
+    "msg.notice.identity_accepted": "**Your new encryption identity was accepted** by {actor}. Staff commands work again from the sessions you verified with it.",
     "msg.notice.ta_added": "**You are now a TA of {code}** ({title}), appointed by {actor}. I invited you to all its rooms, including the staff room: accept the invitations to see them.\n\nYou can now invite people, compare the roster and manage exercise groups for {code}. Send me `!help` to see how; commands go here, in our direct chat.",
     "msg.notice.ta_removed": "**You are no longer a TA of {code}** ({actor} removed you). Your moderator rights there are gone, and you were removed from its staff-only rooms. If this is a mistake, contact {actor}.",
     "msg.notice.course_archived": "{actor} **archived your course {code}**: it is now read-only for students. For the next semester: `!course rollover {code} <semester>`. Questions? Contact {actor}.",

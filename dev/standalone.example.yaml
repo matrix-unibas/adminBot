@@ -42,6 +42,8 @@ plugin_config:
   language: en
   startup:
     self_check: true
+  security:
+    verified_sessions: false   # no E2EE locally (see above)
   identity:
     allowed_domains: [unibas.ch, stud.unibas.ch]
     bind_threepids: true

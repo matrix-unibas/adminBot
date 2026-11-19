@@ -24,6 +24,19 @@ anything, and makes bulk actions explicit.
         server (federation is off anyway) and only in a room with exactly the bot and the
         sender (\autoref{sec:dm-rule}), checked on every command. Links, email lists and
         tokens therefore never appear in a shared room.
+  \item \textbf{Verified sessions, pinned identity} (\file{sessions.py}, 1.2.0). A password is
+        enough to log in a new session \emph{and} to \ui{Reset identity} in Element (Synapse
+        asks only for the password before accepting new cross-signing keys). Staff commands
+        and uploads are therefore accepted only (1) as encrypted messages (2) from a session
+        cross-signed by its owner's identity, and (3) while that identity's master key is the
+        one the bot pinned when it first saw the user (table \cmd{trusted_identity}). After an
+        identity reset the commands are refused and the audit room is told; an admin accepts
+        the new identity with \cmd{!admin identity accept @user} after checking with the
+        person outside Matrix. maubot drops mautrix's per-event trust state when it wraps
+        events, so the check fetches the event again and decrypts it a second time (allowed:
+        mautrix doesn't ratchet keys on decrypt in maubot 0.6.0). Public commands are not
+        checked. Instance config \cmd{security.verified_sessions} (default on; off only for
+        the local dev stack without encryption).
   \item \textbf{Confirm for bulk and destructive actions.} Plans show what will happen; only
         the requester can confirm; the role is checked again at confirm time.
   \item \textbf{Resets for others are admin-only.} Whoever issues a reset link can open it. A
@@ -151,9 +164,10 @@ Synapse's and the admin bot's databases.
 \section{Known gaps}
 
 \begin{itemize}
-  \item \textbf{Open registration (I8).} As long as Synapse's token registration is enabled,
-        someone with a registration token can pick any username, bypassing the email
-        mapping. It should be switched off now that signup links are live.
+  \item \textbf{Identity pinning is trust on first use.} The bot pins the identity it sees
+        first. Someone who has a user's password \emph{before} that user ever sends a staff
+        command could set up an identity first. Admins should give roles only to people who
+        have logged in and set up recovery.
   \item \textbf{Default crypto pickle key (I3)} on the main maubot (\autoref{ch:synapse}).
   \item \textbf{No offboarding.} Nothing tells the server when someone leaves the university;
         deactivation is manual.

@@ -35,6 +35,7 @@ Watch for the \robot{} reaction:
 \end{itemize}
 
 \section{Messages from the bot and what to do}
+\label{sec:troubleshooting-messages}
 
 \begin{center}
 \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{5.3cm}L@{}}
@@ -43,6 +44,17 @@ Watch for the \robot{} reaction:
 \midrule
 \enquote{Please send me commands in a direct chat \dots} &
   Use your one-to-one chat with \botid{}. In course rooms the bot doesn't take commands. \\
+\enquote{I only accept staff commands in an encrypted chat} &
+  Start a new direct chat with \botid{} (Element encrypts direct chats by default) and use
+  that one. \\
+\enquote{I only accept staff commands from a verified session} &
+  Verify this login in Element with another device or your recovery key; without recovery
+  set up yet: \ui{Settings} $\rightarrow$ \ui{Encryption} $\rightarrow$ \ui{Set up recovery}.
+  Then send the command again. \\
+\enquote{Your encryption identity changed \dots} &
+  You (or someone with your password) used \ui{Reset identity}. Contact a bot admin; they
+  check with you directly and accept the new identity (\cmd{!admin identity accept}). If it
+  wasn't you, change your password right away. \\
 \enquote{You are not allowed to do that: only \dots} &
   The message names who may do it. Check your roles with \cmd{!whoami}; ask the course
   owner or a bot admin. \\

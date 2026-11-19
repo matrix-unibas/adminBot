@@ -1,6 +1,6 @@
 # MARVIN Admin Bot: Implementation Plan (v7)
 
-Status: **implemented** (phases 0–8). Phases 0–7 run on production; Phase 8 (professor bots) is being rolled out (2026-10-07). Plugin version 0.2.0 (user feedback, help, handbook; 2026-10-16) is not deployed yet; 0.3.0 (self-service password resets, 2026-10-22) builds on it; 0.3.1 (admins manage all professor bots, 2026-10-22) is a small addition. v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help), v7 2026-10-22 (password self-service, notices, recovery key).
+Status: **implemented** (phases 0–8). Production was reset to a clean state on 2026-11-19 (Journal) and the admin bot reinstalled; 1.1.0 (2026-11-19) and 1.2.0 (2026-11-20, see below) are not deployed yet. Earlier: 0.2.0 (user feedback, help, handbook; 2026-10-16), 0.3.0 (self-service password resets, 2026-10-22), 0.3.1 (admins manage all professor bots, 2026-10-22), 1.0.0 (= 0.3.2). v1 2026-10-05, v2 2026-10-05 (after review), v3 2026-10-06 (aligned with the repo), v4 2026-10-06 (no IDM), v5 2026-10-06 (implemented), v6 2026-10-16 (feedback and help), v7 2026-10-22 (password self-service, notices, recovery key).
 Scope: a new maubot plugin (plugin ID `ch.unibas.dmi.marvin.adminbot`). Planned as `server/admin-bot/`, it now lives in its own repository (`adminBot`); paths below that say `server/admin-bot/` mean the root of that repo. See `README.md` for development and testing.
 Infrastructure changes outside the plugin are listed in §16 (I1–I11); how to apply them is in `server/docs/admin-bot-setup.md` in the `matrix-unibas` repo.
 
@@ -48,6 +48,14 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I11); how to 
 
 - **Approval aids** (`review.py`). Packages may only contain reviewable files (source, text, images, fonts; no `.pyc`/`__pycache__`/`.so`/archives). The request in the audit room summarises the package (files, lines, `webapp`, `database`) and a static AST check: process/exec/native/unpickle/socket/direct-DB/maubot internals (CHECK), the usual hiding tricks (computed `getattr`, dunders, decoders, long encoded strings), network/files/env (INFO). Updates: change counts against the running version, new findings marked "(new)". `!admin bots show <id>` sends the .mbp, the .diff and every finding. The running package is kept per bot (`bot_request.mbp` of the newest `done` request; older ones and all on delete are emptied). Policy: professors are trusted and admins won't read everything, so approval stays on by default as a conscious, audited decision; `user_bots.require_approval: false` turns it off.
 - **Found: the userbots maubot used the Postgres superuser** (infra repo `userbots/config.yaml.template`). A professor plugin could read Synapse's and the admin bot's databases and run commands in the Postgres container. New infra item **I12**: own role `userbots`, `REVOKE CONNECT ... FROM PUBLIC` on the other databases.
+
+**Changes in 1.2.0 (2026-11-20): staff commands only from verified sessions**
+- **Found:** a password alone was enough to command the bot. Whoever learned a professor's or admin's password could log in a new session and use their rights (an admin's: reset links for any account). Element's *Reset identity* also only needs the password, so "the session is cross-signed" alone wouldn't stop that.
+- **Now** (`sessions.py`, router): staff commands and uploads (everything except the public `!help`/`!password`) are accepted only (1) encrypted, (2) from a session cross-signed by the sender's identity (mautrix trust `CROSS_SIGNED_*`), (3) while that identity's master key is the one pinned for the user (`trusted_identity`, migration v5; pinned on the first staff command). After an identity reset: refused, the audit room is told once per new key, and an admin runs `!admin identity accept @user` after checking with the person outside Matrix (the user gets a notice). `!admin identity @user` shows accepted and current key.
+- maubot's `MaubotMessageEvent` drops mautrix's per-event `trust_state`, so the check fetches the event again (plain `EventMethods.get_event`) and decrypts it a second time. That works because maubot 0.6.0 leaves `ratchet_keys_on_decrypt` and the key-deletion options off; re-check after an image update.
+- Config `security.verified_sessions` (default true). Off in tests and in `dev/standalone*.yaml` (no E2EE locally).
+- Decided against: requiring `CROSS_SIGNED_TRUSTED`/`VERIFIED` (the bot would have to verify every staff member interactively); per-command exceptions (`!whoami`, `!confirm` are checked too, so one rule covers everything).
+- Remaining: pinning is trust on first use, so roles should only go to people who have logged in and set up recovery.
 
 **Changes in plugin 0.3.1 (2026-10-22): admins manage all professor bots**
 - The admin powers already existed but were hidden: admins pass every role check, and the `!bot` commands accepted `@owner <name>`. Now they are documented in `usage.*`/`help.*`.
@@ -147,7 +155,7 @@ Professor / TA ──DM (E2EE)──► @adminbot (in matrix-maubot) ─┬─ h
 **Privilege**
 - The bot's own Matrix account (`@adminbot:<server>`) is the only privileged identity. It has the server-admin flag.
 - Professors never get credentials.
-- The bot reaches Synapse directly on the Docker network (`http://synapse:8008`, as in `homeservers:` in the maubot config). The host nginx IP allowlist on `/_synapse/admin` therefore doesn't affect it, and no nginx change is needed for the admin API.
+- The bot reaches Synapse directly on the Docker network (`http://synapse:8008`, as in `homeservers:` in the maubot config). It doesn't need the public route: since 2026-11-20 host nginx refuses `/_synapse/admin` for everyone (403), and Ketesa goes through the SSH tunnel (`matrix-unibas` `docs/admin_ui.md`).
 
 **Where commands are accepted**
 - Only in a direct room between the bot and the sender. Links, email lists and tokens therefore never end up in a shared room.
@@ -179,6 +187,7 @@ Professor / TA ──DM (E2EE)──► @adminbot (in matrix-maubot) ─┬─ h
 The plugin enforces these itself, whatever the deployment looks like:
 
 - Allowlist and role checks on every handler (§5).
+- Staff commands only from verified sessions of the pinned identity (1.2.0, `sessions.py`).
 - Commands only in DMs (definition in §2), only from local senders.
 - Signup tokens are random, single-use, stored only as a hash, and expire after 14 days.
 - Rate limits on the signup page, per client IP and globally.
@@ -514,6 +523,7 @@ adminBot/ (repo root; planned as server/admin-bot/)
     attachments.py       # file in/out incl. E2EE, PendingUploads
     signups.py           # signup + reset tokens, reset codes, redeem, recover, pending invites
     notices.py           # welcome/reset notices held until the user has a device (v7)
+    sessions.py          # staff commands only from verified sessions, pinned identities (1.2.0)
     delivery.py          # Delivery interface; CsvDelivery, InlineDelivery
     userbots.py          # .mbp validation, userbots API client, BotManager
     strings/             # t(key), en.py
@@ -529,7 +539,7 @@ adminBot/ (repo root; planned as server/admin-bot/)
 Server-side setup (everything outside this repo): `server/docs/admin-bot-setup.md` in `matrix-unibas`. The professor guide is `handbook/` (v6); its technical version covers architecture and security. The admin runbook is still Phase 9.
 
 **DB tables**
-- `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`, `bot_recovery_key`, `reset_code`, `pending_notice` (v7).
+- `professor`, `course`, `course_staff`, `template`, `signup_token`, `pending_invite`, `plan`, `job`, `job_item`, `audit`, `user_bot`, `plugin_owner`, `bot_request`, `bot_recovery_key`, `reset_code`, `pending_notice` (v7), `bot_account` (1.1.0), `trusted_identity` (1.2.0).
 
 ## 14. Phases
 
@@ -584,7 +594,7 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 | I8 | done in the repo (`matrix-unibas` 75cd8a2, `enable_registration: false`) |
 | I9 | done (`startup.md` updated) |
 | I11 | open (v7): well-known `secure_backup_required` |
-| I12 | in the repo (`matrix-unibas` 5eb7a74, admin-bot-setup.md §8); roll out **before professors upload bots** |
+| I12 | rolled out on production 2026-11-19 (`matrix-unibas` 5eb7a74, admin-bot-setup.md §8; a typo in the dump step needed a restore from backup, §8 now checks the dump) |
 
 **I1. Public route for the signup page** (`server/nginx/matrix.conf`)
 - Host nginx sends everything matching `^(/_matrix|…)` to Synapse, so `/_matrix/maubot/...` currently returns a Synapse 404.
