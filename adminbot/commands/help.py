@@ -99,13 +99,27 @@ class HelpCommands(CommandGroup):
             return t("msg.help_public", usages="\n".join(f"- {t(s.usage)}" for s in specs))
         lines = [t("msg.help_header")]
         for heading, names in AREAS:
-            specs = [s for s in self.bot.router.specs if s.name in names and viewer.sees(s)]
-            if not specs:
-                continue
-            lines.append(f"\n**{t(heading)}**")
-            lines.extend(f"- {t(s.usage)}" for s in specs)
+            entries = []
+            for name in names:
+                specs = [s for s in self.bot.router.specs if s.name == name and viewer.sees(s)]
+                if specs:
+                    entries.append(self.summary(name, specs))
+            if entries:
+                lines.append(f"\n**{t(heading)}**")
+                lines.extend(entries)
         lines.append("\n" + t("msg.help_footer"))
         return "\n".join(lines)
+
+    @staticmethod
+    def summary(name: str, specs: list[CommandSpec]) -> str:
+        """One overview line per command. A command without subcommands shows its usage; one
+        with subcommands lists them by name only, e.g. `!course create|list|...` (their
+        arguments are in `!help <command> <sub>`)."""
+        if len(specs) == 1 and specs[0].sub is None:
+            return f"- {t(specs[0].usage)}"
+        subs = "|".join(s.sub for s in specs if s.sub)
+        shape = f"!{name} [{subs}]" if any(s.sub is None for s in specs) else f"!{name} {subs}"
+        return f"- `{shape}`: {t(f'help.summary.{name}')}"
 
     def group(self, name: str, specs: list[CommandSpec]) -> str:
         lines = [t(f"help.group.{name}"), ""]

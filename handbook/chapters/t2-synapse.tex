@@ -124,6 +124,18 @@ the user. That is checked right away (a \cmd{!password} reset keeps the sessions
 sent at once) and then every minute. Notices older than \cmd{notices.max_age_days} are
 dropped unsent.
 
+The same path carries the notices about changes someone else made (\cmd{Notices.tell}): a new
+or removed professor or TA role, and changes an admin made to a person's course (room added or
+removed, archive, rollover) or bots (start, stop, config, delete, \cmd{disable-all}). Nothing
+is sent when people change their own things.
+
+\paragraph{Invited, not joined.} A notice usually opens a \emph{new} DM, where the user is
+only invited when the message is sent. For a room whose member list mautrix hasn't loaded yet,
+it shares the room key with the \emph{joined} members only (the bot), and it doesn't share
+again when an invitee joins. The first message would stay unreadable. \cmd{MatrixOps.open_dm}
+therefore loads the full member list (\cmd{GET /members}, joined and invited) before it
+returns a room.
+
 \section{End-to-end encryption}
 
 The bot's maubot client has its own device and an Olm/Megolm crypto store in maubot's

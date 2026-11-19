@@ -196,6 +196,7 @@ class MatrixOps:
                 continue
             others = {u for u, m in members.items() if m in ("join", "invite") and u != self.mxid}
             if members.get(self.mxid) == "join" and others == {user_id}:
+                await self._load_members(room_id)
                 return room_id
         initial_state = []
         if self.client.crypto:
@@ -207,7 +208,18 @@ class MatrixOps:
         direct[user_id] = [room_id, *direct.get(user_id, [])]
         await self.client.set_account_data(EventType.DIRECT, direct)
         self._dm_cache[user_id] = room_id
+        await self._load_members(room_id)
         return room_id
+
+    async def _load_members(self, room_id: RoomID) -> None:
+        """Make mautrix share the room key with invited members too. For a room whose member list
+        it hasn't loaded yet, mautrix shares the key only with *joined* members. In a DM the bot
+        has just created, the user is only invited, so the first message (the welcome) would be
+        encrypted for the bot alone. mautrix doesn't re-share when an invitee joins, so the
+        message could never be read. Loading the full list (joined + invited) prevents that."""
+        store = self.client.state_store
+        if self.client.crypto and store is not None and not await store.has_full_member_list(room_id):
+            await self.client.get_members(room_id)
 
     async def send(self, room_id: RoomID, markdown: str, edits: EventID | None = None) -> EventID:
         """Markdown notice (m.notice: other bots don't react to it). Single newlines become line

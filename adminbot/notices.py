@@ -41,6 +41,12 @@ class Notices:
             return
         await self.deliver(user_id)
 
+    async def tell(self, user_id: UserID, actor: UserID, key: str, **params: Any) -> None:
+        """Tell user_id about a change someone else made to their roles, courses or bots (the
+        text gets {actor}). Nothing is sent when people change their own things."""
+        if user_id != actor:
+            await self.send(user_id, key, actor=actor, **params)
+
     async def deliver(self, user_id: UserID | None = None) -> int:
         """Send the held notices (of one user, or of everyone). Never raises; returns how many
         were sent. Notices older than notices.max_age_days are dropped unsent."""

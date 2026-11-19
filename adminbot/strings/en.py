@@ -10,7 +10,7 @@ Every reply should tell the reader what happened, why, and what to do next.
 
 STRINGS: dict[str, str] = {
     # --- usage (one line each, shown in !help) -----------------------------------------------
-    "usage.help": "`!help [<command>]`: this overview, or details and examples for one command",
+    "usage.help": "`!help [<command> [<subcommand>]]`: this overview, or details and examples for one command",
     "usage.whoami": "`!whoami`: your roles and courses",
     "usage.password": "`!password`: a link to set a new password for your account",
     "usage.password.code": "`!password code`: a new reset code, for when you are logged out everywhere",
@@ -64,6 +64,16 @@ STRINGS: dict[str, str] = {
     "help.role.ta": "course staff (the course owner and its TAs)",
     "help.role.any": "everyone I know",
     # --- help per command group (shown by !help <command>) ------------------------------------
+    # one line per command in the !help overview (commands with subcommands)
+    "help.summary.password": "set a new password for your account, or get a reset code",
+    "help.summary.admin": "professors, audit log, bot requests",
+    "help.summary.course": "create and manage courses, TAs, archive, new semester",
+    "help.summary.room": "add or remove rooms in a course",
+    "help.summary.roster": "compare a course with the official list of participants",
+    "help.summary.groups": "exercise group rooms, assigning people, messages per group",
+    "help.summary.template": "save and reuse course layouts",
+    "help.summary.signup": "signup links for new people, password-reset links",
+    "help.summary.bot": "your own bots (maubot plugins)",
     "help.group.password": "**Your password.** Everyone on this server can use these, in a direct chat with me. They only ever affect your own account.",
     "help.group.course": "**Courses.** A course is a Matrix *space* with rooms inside. Whoever creates it owns it; TAs help with people and groups.",
     "help.group.room": "**Rooms** inside a course you own.",
@@ -530,7 +540,7 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "msg.no": "no",
     "msg.and_more": " and {n} more",
     "msg.help_header": "**What I can do for you**\nSend commands here, in our direct chat. I react with 🤖 as soon as I start working on one.",
-    "msg.help_footer": "**More help:** `!help <command>` explains a command with options and an example, e.g. `!help course create`, `!help invite` or `!help groups`.\nChanges to many people or rooms are shown as a plan first and only run after `!confirm <code>`.",
+    "msg.help_footer": "**Subcommands:** most commands do several things. `!course create|list|...` means `!course create`, `!course list` and so on; pick one. This list leaves out their arguments:\n- `!help <command>` shows a command's subcommands with their arguments, e.g. `!help course`.\n- `!help <command> <subcommand>` explains one in detail, with an example and next steps, e.g. `!help course create`. `!course create --help` does the same.\n\nChanges to many people or rooms are shown as a plan first and only run after `!confirm <code>`.",
     "msg.help_group_footer": "Details and an example: `!help {name} <subcommand>`, e.g. `!help {name} {example}`.",
     "msg.help_hint": "Details and examples: `!help {command}`.",
     "msg.help_public": "**What I can do for you**\nI set up the courses on this server. You can use these commands here, in our direct chat:\n{usages}\n\n`!help password` explains them. Questions about a course? Ask its professor or TAs.",
@@ -653,6 +663,20 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "msg.bot_delete_plan": "Delete bot **{name}**: it is stopped and removed, and its account {user_id} is deactivated.",
     "msg.bot_delete_all_plan": "Delete **{count}** bot(s): each is stopped and removed, and its account deactivated.\n{bots}",
     "msg.bot_delete_none": "There are no bots to delete. `!bot list` shows the bots.",
+    # --- notices: changes someone else made to your roles, courses or bots (Notices.tell) -------
+    "msg.notice.prof_added": "**You are now a professor** on this server ({actor} added you). You can create courses (`!course create`), appoint TAs and request your own bots.\n\nSend me `!help` to see what you can do. Commands go here, in our direct chat.",
+    "msg.notice.prof_removed": "**You are no longer a professor** on this server ({actor} removed you). You can't create new courses or bots any more. Courses you own stay yours. Bots you already have keep running, but only a bot admin can change them now. If this is a mistake, contact {actor}.",
+    "msg.notice.ta_added": "**You are now a TA of {code}** ({title}), appointed by {actor}. I invited you to all its rooms, including the staff room: accept the invitations to see them.\n\nYou can now invite people, compare the roster and manage exercise groups for {code}. Send me `!help` to see how; commands go here, in our direct chat.",
+    "msg.notice.ta_removed": "**You are no longer a TA of {code}** ({actor} removed you). Your moderator rights there are gone, and you were removed from its staff-only rooms. If this is a mistake, contact {actor}.",
+    "msg.notice.course_archived": "{actor} **archived your course {code}**: it is now read-only for students. For the next semester: `!course rollover {code} <semester>`. Questions? Contact {actor}.",
+    "msg.notice.course_rollover": "{actor} **set up {code} for {semester}**, with the same rooms and staff. The previous course is now **{old_code}**.\n\n**Next steps**\n- `!invite {code}` with the new list of students\n- `!course archive {old_code}` to make the old course read-only",
+    "msg.notice.room_added": "{actor} **added the room {name}** to your course {code}. `!course info {code}` lists its rooms.",
+    "msg.notice.room_removed": "{actor} **took the room {name} out of your course {code}**. The room and its history still exist, and its members stay in it.",
+    "msg.notice.bot_started": "{actor} **started your bot {name}**. `!bot info {name}` shows its status.",
+    "msg.notice.bot_stopped": "{actor} **stopped your bot {name}**. It keeps its rooms and settings. `!bot start {name}` starts it again; if it was stopped for a reason, ask {actor} first.",
+    "msg.notice.bot_config": "{actor} **changed the config of your bot {name}**. The bot uses it right away; `!bot config {name}` downloads the current one.",
+    "msg.notice.bot_deleted": "{actor} **deleted your bot {name}**: it was removed and its account deactivated. Questions? Contact {actor}. `!bot create {name}` requests a new one.",
+    "msg.notice.bots_disabled_all": "A bot admin ({actor}) **stopped all professor bots**, including yours: {bots}. They stay set up. Ask {actor} before starting them again with `!bot start <name>`.",
     "msg.bots_disabled_all": "Stopped {count} professor bots. Owners can start theirs again with `!bot start`.",
     # --- signup pages ---------------------------------------------------------------------------
     "web.title": "DMI Matrix account",

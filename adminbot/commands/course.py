@@ -161,6 +161,8 @@ class CourseCommands(CommandGroup):
                 await self.bot.ops.invite(room_id, user)
             await self.bot.audit.log(evt.sender, "course.ta.add", course=course.code, target_count=1)
             await self.reply(evt, "msg.ta_added", user_id=user, code=course.code)
+            await self.bot.notices.tell(user, evt.sender, "msg.notice.ta_added", code=course.code,
+                                        title=course.title)
         else:
             if await self.bot.store.staff_role(course.code, user) != TA:
                 raise NotFound("err.not_ta", user_id=user, code=course.code)
@@ -172,6 +174,7 @@ class CourseCommands(CommandGroup):
                     await self.bot.ops.kick(room_id, user, t("msg.kick_reason_ta"))
             await self.bot.audit.log(evt.sender, "course.ta.remove", course=course.code, target_count=1)
             await self.reply(evt, "msg.ta_removed", user_id=user, code=course.code)
+            await self.bot.notices.tell(user, evt.sender, "msg.notice.ta_removed", code=course.code)
 
     @command("course", "archive", usage="usage.course.archive", role=Role.PROFESSOR)
     async def archive(self, evt: MessageEvent, args: str) -> None:
@@ -212,6 +215,7 @@ class CourseCommands(CommandGroup):
         archive_space = self.bot.config["archive_space"]
         if archive_space:
             await self.bot.ops.add_child(archive_space, course.space_id, suggested=False)
+        await self.bot.notices.tell(course.owner, job.requester, "msg.notice.course_archived", code=course.code)
 
     @command("course", "rollover", usage="usage.course.rollover", role=Role.PROFESSOR)
     async def rollover(self, evt: MessageEvent, args: str) -> None:
@@ -240,3 +244,5 @@ class CourseCommands(CommandGroup):
         await self.bot.audit.log(evt.sender, "course.rollover", course=course.code, target_count=len(applied.rooms))
         await self.reply(evt, "msg.rollover_done", code=course.code, semester=new_semester, old_code=old_code,
                          link=matrix_to(applied.space_id, self.bot.server_name))
+        await self.bot.notices.tell(course.owner, evt.sender, "msg.notice.course_rollover", code=course.code,
+                                    semester=new_semester, old_code=old_code)

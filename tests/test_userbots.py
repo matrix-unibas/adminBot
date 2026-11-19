@@ -213,3 +213,34 @@ async def test_keywords_are_not_bot_names():
     for name in ("all", "help"):
         with pytest.raises(ValidationError):
             BotManager.check_name(name)
+
+
+async def test_owner_is_told_when_someone_else_changes_their_bot(bot, chat, managed):
+    await add_bot(bot, OTHER, "poll")
+    await add_bot(bot, PROF, "quiz")
+    bot.notices.send = AsyncMock()
+    await chat.send("!bot stop quiz", sender=PROF)
+    assert bot.notices.send.await_count == 0
+    await chat.send("!bot stop poll", sender=ADMIN)
+    await chat.send("!bot start poll", sender=ADMIN)
+    plan = (await chat.send("!bot delete poll", sender=ADMIN))[0]
+    await chat.send(f"!confirm {re.search(r'!confirm (\w+)', plan).group(1)}", sender=ADMIN)
+    await wait_for_jobs(bot)
+    sent = [(c.args[0], c.args[1], c.kwargs["actor"]) for c in bot.notices.send.await_args_list]
+    assert sent == [
+        (OTHER, "msg.notice.bot_stopped", ADMIN),
+        (OTHER, "msg.notice.bot_started", ADMIN),
+        (OTHER, "msg.notice.bot_deleted", ADMIN),
+    ]
+
+
+async def test_disable_all_tells_owners_of_running_bots(bot, chat, managed):
+    await add_bot(bot, OTHER, "poll")
+    await add_bot(bot, PROF, "quiz")
+    await add_bot(bot, PROF, "echo")
+    await bot.store.set_user_bot_state(PROF, "echo", "stopped")
+    managed.client.stop_all.return_value = 2
+    bot.notices.send = AsyncMock()
+    await chat.send("!admin bots disable-all", sender=ADMIN)
+    sent = {c.args[0]: c.kwargs["bots"] for c in bot.notices.send.await_args_list}
+    assert sent == {OTHER: "`poll`", PROF: "`quiz`"}

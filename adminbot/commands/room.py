@@ -36,6 +36,8 @@ class RoomCommands(CommandGroup):
         await self.bot.audit.log(evt.sender, "room.add", course=course.code, target_count=1)
         await self.reply(evt, "msg.room_added_private" if a.flag("private") else "msg.room_added",
                          name=spec.name, code=course.code, room_id=room_id)
+        await self.bot.notices.tell(course.owner, evt.sender, "msg.notice.room_added", name=spec.name,
+                                    code=course.code)
 
     @command("room", "remove", usage="usage.room.remove", role=Role.PROFESSOR)
     async def remove(self, evt: MessageEvent, args: str) -> None:
@@ -50,5 +52,7 @@ class RoomCommands(CommandGroup):
                 await self.bot.ops.remove_child(course.space_id, room_id)
                 await self.bot.audit.log(evt.sender, "room.remove", course=course.code, target_count=1)
                 await self.reply(evt, "msg.room_removed", name=settings["name"] or room_id, code=course.code)
+                await self.bot.notices.tell(course.owner, evt.sender, "msg.notice.room_removed",
+                                            name=settings["name"] or room_id, code=course.code)
                 return
         raise NotFound("err.room_unknown", name=target, code=course.code)

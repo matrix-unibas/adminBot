@@ -39,6 +39,8 @@ class BotCommands(CommandGroup):
 
     async def delete_item(self, job, item) -> None:
         await self.manager.delete_item(job, item)
+        await self.bot.notices.tell(item.payload["owner"], job.requester, "msg.notice.bot_deleted",
+                                    name=item.payload["name"])
 
     async def target(self, evt: MessageEvent, a: Args, usage: str) -> UserBot:
         """`<name>` (own bot; admins: any bot with that name, if only one owner has it),
@@ -129,6 +131,7 @@ class BotCommands(CommandGroup):
         await self.manager.set_config(bot.owner, bot.name, decode_text(upload.data))
         await self.bot.audit.log(evt.sender, "bot.config", bot=bot.name)
         await self.reply(evt, "msg.bot_config_saved", name=bot.name)
+        await self.bot.notices.tell(bot.owner, evt.sender, "msg.notice.bot_config", name=bot.name)
 
     async def _set_started(self, evt: MessageEvent, args: str, started: bool, usage_key: str) -> None:
         usage = t(usage_key)
@@ -136,6 +139,9 @@ class BotCommands(CommandGroup):
         await self.manager.set_started(bot.owner, bot.name, started)
         await self.bot.audit.log(evt.sender, "bot.start" if started else "bot.stop", bot=bot.name)
         await self.reply(evt, "msg.bot_started" if started else "msg.bot_stopped_now", name=bot.name)
+        await self.bot.notices.tell(bot.owner, evt.sender,
+                                    "msg.notice.bot_started" if started else "msg.notice.bot_stopped",
+                                    name=bot.name)
 
     @command("bot", "start", usage="usage.bot.start", role=Role.PROFESSOR, needs=NEEDS)
     async def start(self, evt: MessageEvent, args: str) -> None:

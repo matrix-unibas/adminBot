@@ -99,8 +99,12 @@ plan you can confirm.}
 \section{Getting help in the chat}
 
 \begin{itemize}
-  \item \cmd{!help}: all commands you can use, grouped by topic.
-  \item \cmd{!help course}: the commands of one group (here: courses) with a short description.
+  \item \cmd{!help}: all commands you can use, grouped by topic, one line each. A command
+        that does several things shows its subcommands by name only, e.g.
+        \cmd{!course create|list|info|...}; that means \cmd{!course create},
+        \cmd{!course list} and so on.
+  \item \cmd{!help course}: the subcommands of one command (here: courses) with their
+        arguments and a short description.
   \item \cmd{!help course create}: one command in detail, with arguments, an example, the
         next steps and who may use it.
   \item \cmd{!course help} and \cmd{!course create --help} do the same.

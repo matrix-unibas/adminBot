@@ -61,9 +61,21 @@ async def test_command_outside_dm_is_refused(bot, chat):
 async def test_help_depends_on_role(chat):
     admin_help = (await chat.send("!help", sender=ADMIN))[0]
     prof_help = (await chat.send("!help", sender=PROF))[0]
-    assert "!admin prof" in admin_help and "!course create" in admin_help
-    assert "!admin prof" not in prof_help and "!course create" in prof_help
+    assert "`!admin prof|audit|bots`" in admin_help and "`!course create|" in admin_help
+    assert "!admin" not in prof_help and "`!course create|" in prof_help
     assert "**Courses and rooms**" in prof_help and "`!help <command>`" in prof_help
+
+
+async def test_help_overview_shows_only_top_level_commands(chat):
+    """One line per command; subcommands by name, their options only in `!help <command> <sub>`."""
+    reply = (await chat.send("!help", sender=PROF))[0]
+    assert "`!course create|list|info|ta|archive|rollover`: create and manage courses" in reply
+    assert "--semester" not in reply and "!course create <code>" not in reply
+    assert "`!password [code]`" in reply
+    assert "`!whoami`: your roles and courses" in reply
+    assert "`!help course create`" in reply and "`!help course`" in reply
+    # Each command is one line (the body renders list items with a bullet).
+    assert sum(line.lstrip("●- ").startswith("`!course") for line in reply.splitlines()) == 1
 
 
 async def test_every_command_has_detailed_help(bot):
@@ -72,6 +84,7 @@ async def test_every_command_has_detailed_help(bot):
     for spec in bot.router.specs:
         assert spec.help_key in STRINGS, spec.help_key
         assert f"help.group.{spec.name}" in STRINGS or not spec.sub, spec.name
+        assert f"help.summary.{spec.name}" in STRINGS or not spec.sub, spec.name
 
 
 async def test_help_for_one_command(chat):
@@ -283,3 +296,60 @@ async def test_password_help_and_refusals(bot, chat):
     bot.config["password.reset_codes"] = False
     assert "switched off" in (await chat.send("!password", sender=STUDENT))[0]
     assert "switched off" in (await chat.send("!password code", sender=STUDENT))[0]
+
+
+# --- notices about changes someone else made ----------------------------------------------------
+
+def told(bot) -> list[tuple]:
+    """(user, key, actor) of every notice sent so far."""
+    return [(c.args[0], c.args[1], c.kwargs.get("actor")) for c in bot.notices.send.await_args_list]
+
+
+async def test_new_professor_is_told(bot, chat, maubot_test_bot):
+    await chat.send(f"!admin prof add {TA}", sender=ADMIN)
+    # Delivered for real (the test DM stands in for TA's DM), after the admin's own reply.
+    texts = [r.content.body for r in maubot_test_bot.responded if hasattr(r.content, "body")]
+    assert "is now a professor" in texts[0]
+    assert "You are now a professor" in texts[1] and ADMIN in texts[1]
+
+
+async def test_role_changes_are_told_but_not_your_own(bot, chat):
+    bot.notices.send = AsyncMock()
+    bot.ops.set_user_power = AsyncMock()
+    bot.ops.kick = AsyncMock()
+    await chat.send(f"!admin prof add {TA}", sender=ADMIN)
+    await chat.send(f"!admin prof remove {TA}", sender=ADMIN)
+    await chat.send(f"!admin prof add {ADMIN}", sender=ADMIN)
+    await make_course(bot)
+    await chat.send(f"!course ta add CS101 {TA}", sender=PROF)
+    await chat.send(f"!course ta remove CS101 {TA}", sender=PROF)
+    assert told(bot) == [
+        (TA, "msg.notice.prof_added", ADMIN),
+        (TA, "msg.notice.prof_removed", ADMIN),
+        (TA, "msg.notice.ta_added", PROF),
+        (TA, "msg.notice.ta_removed", PROF),
+    ]
+
+
+async def test_admin_changes_to_a_course_are_told_to_its_owner(bot, chat):
+    await make_course(bot)
+    bot.notices.send = AsyncMock()
+    bot.ops.children = AsyncMock(return_value=[f"!a:{SERVER}", f"!b:{SERVER}"])
+    bot.ops.room_settings = AsyncMock(side_effect=lambda room: {"name": room[1]})
+    bot.ops.remove_child = AsyncMock()
+    assert "no longer part of CS101" in (await chat.send("!room remove CS101 a", sender=PROF))[0]
+    assert told(bot) == []
+    await chat.send("!room remove CS101 b", sender=ADMIN)
+    assert told(bot) == [(PROF, "msg.notice.room_removed", ADMIN)]
+
+
+async def test_every_notice_text_renders(bot):
+    """Notices are formatted later, from stored params: a typo in a placeholder would only show
+    up when the notice is delivered."""
+    from adminbot.strings.en import STRINGS
+
+    params = {"actor": ADMIN, "code": "CS101", "title": "Intro", "semester": "FS27", "old_code": "CS101-HS26",
+              "name": "quiz", "bots": "`quiz`"}
+    for key in STRINGS:
+        if key.startswith("msg.notice."):
+            assert "{" not in bot.notices.render(key, params), key

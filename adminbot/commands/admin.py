@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from maubot import MessageEvent
+from mautrix.types import UserID
 
 from ..audit import format_entry
 from ..authz import Role
@@ -32,6 +33,8 @@ class AdminCommands(CommandGroup):
             if added:
                 await self.bot.audit.log(evt.sender, "professor.add", target_count=1)
             await self.reply(evt, "msg.prof_added" if added else "msg.prof_already", user_id=user)
+            if added:
+                await self.bot.notices.tell(user, evt.sender, "msg.notice.prof_added")
         else:
             removed = await self.bot.store.remove_professor(user)
             if removed:
@@ -40,6 +43,8 @@ class AdminCommands(CommandGroup):
             await self.reply(evt, key, user_id=user)
             if user in (self.bot.config["professors"] or []):
                 await self.reply(evt, "msg.prof_in_config", user_id=user)
+            if removed:
+                await self.bot.notices.tell(user, evt.sender, "msg.notice.prof_removed")
 
     @command("admin", "audit", usage="usage.admin.audit", role=Role.ADMIN, needs=())
     async def audit(self, evt: MessageEvent, args: str) -> None:
@@ -82,8 +87,15 @@ class AdminCommands(CommandGroup):
                 await self.bot.bots.reject(request_id, evt.sender, reason)
                 await self.reply(evt, "msg.bot_rejected_admin", id=request_id)
         elif action == "disable-all":
+            running: dict[UserID, list[str]] = {}
+            for b in await self.bot.store.list_user_bots():
+                if b.state == "running":
+                    running.setdefault(b.owner, []).append(f"`{b.name}`")
             count = await self.bot.bots.disable_all()
             await self.bot.audit.log(evt.sender, "bot.disable_all", target_count=count)
             await self.reply(evt, "msg.bots_disabled_all", count=count)
+            for owner, names in running.items():
+                await self.bot.notices.tell(owner, evt.sender, "msg.notice.bots_disabled_all",
+                                            bots=", ".join(names))
         else:
             raise ArgError("err.bad_args", usage=usage)
