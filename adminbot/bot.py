@@ -134,6 +134,13 @@ class AdminBot(Plugin):
                 await check("ratelimit", True)
             except Exception as e:
                 await check("ratelimit", False, str(e), fatal=False)
+            try:
+                # bot accounts don't have to agree to the terms (user_consent) to send messages;
+                # before the audit room report below, which would otherwise be refused
+                await self.synapse.set_user_type(mxid, "bot")
+                await check("bot_type", True)
+            except Exception as e:
+                await check("bot_type", False, str(e), fatal=False)
         room = self.config["audit_room"]
         if not room:
             await check("audit_room", False, "audit_room is not configured", fatal=False)

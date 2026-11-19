@@ -57,6 +57,12 @@ class SynapseAdmin:
             content["user_type"] = user_type
         await self.client.api.request(Method.PUT, SynapseAdminPath.v2.users[user_id], content)
 
+    async def set_user_type(self, user_id: UserID, user_type: str | None) -> None:
+        """PUT /_synapse/admin/v2/users/<user_id> with only `user_type` (null clears it). Synapse
+        exempts `bot` (and `support`) accounts from the terms-and-conditions check (`user_consent`),
+        so bots can send messages without agreeing to the terms."""
+        await self.client.api.request(Method.PUT, SynapseAdminPath.v2.users[user_id], {"user_type": user_type})
+
     async def reset_password(self, user_id: UserID, new_password: str, logout_devices: bool = True) -> None:
         await self.client.api.request(
             Method.POST, SynapseAdminPath.v1.reset_password[user_id],

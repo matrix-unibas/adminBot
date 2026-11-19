@@ -74,6 +74,7 @@ the audit room:
 \midrule
 \cmd{admin} & commands refused & the bot account has Synapse's server-admin flag \\
 \cmd{ratelimit} & warning & the bot could lift its own rate limit \\
+\cmd{bot_type} & warning & the bot marked its own account as a bot, so it doesn't have to agree to the terms (\cmd{user_consent}) \\
 \cmd{audit_room} & warning & the audit room is configured and the bot is in it \\
 \cmd{postgres} & warning & plugin data is in PostgreSQL (and so in the backup), not SQLite \\
 \cmd{userbots} & \cmd{!bot}, \cmd{!admin bots} refused & professor bots enabled, reachable, and \emph{not} this maubot \\

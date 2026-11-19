@@ -30,6 +30,9 @@ def manager(bot, monkeypatch) -> BotManager:
     bot.synapse.get_user = AsyncMock(return_value=None)
     bot.synapse.login = AsyncMock(return_value=("syt_token", "DEVICE"))
     bot.synapse.joined_room_count = AsyncMock(return_value=0)
+    bot.synapse.set_user_type = AsyncMock()
+    bot.synapse.reactivate = AsyncMock()
+    bot.synapse.reset_password = AsyncMock()
     bot.ops.send = AsyncMock()
     bot.audit.post = AsyncMock()
     return BotManager(bot, client)
@@ -47,6 +50,26 @@ async def test_new_bot_is_cross_signed_and_key_kept(bot, manager):
     assert await bot.store.get_bot_recovery_key(BOT_MXID) == "EsT0 abcd"
     ready = manager.bot.ops.send.await_args.args[1]
     assert "is running" in ready and "couldn't verify" not in ready
+
+
+async def test_new_bot_account_is_created_as_bot(bot, manager):
+    await manager._provision_create(request())
+    assert bot.synapse.create_user.await_args.kwargs["user_type"] == "bot"
+    bot.synapse.set_user_type.assert_not_awaited()
+
+
+@pytest.mark.parametrize("existing", [{"deactivated": True}, {"deactivated": False, "user_type": None}])
+async def test_reused_account_is_marked_as_bot(bot, manager, existing):
+    """Without user_type bot the account can't send until it agrees to the terms (user_consent)."""
+    bot.synapse.get_user = AsyncMock(return_value=existing)
+    await manager._provision_create(request())
+    bot.synapse.set_user_type.assert_awaited_once_with(BOT_MXID, "bot")
+
+
+async def test_reused_bot_account_is_left_alone(bot, manager):
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": True, "user_type": "bot"})
+    await manager._provision_create(request())
+    bot.synapse.set_user_type.assert_not_awaited()
 
 
 async def test_existing_keys_are_reused_with_stored_recovery_key(bot, manager):

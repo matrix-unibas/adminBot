@@ -23,7 +23,7 @@ All calls go through mautrix (\cmd{client.api.request} with \cmd{SynapseAdminPat
 \textbf{Endpoint} & \textbf{Used for} \\
 \midrule
 \cmd{GET /_synapse/admin/v2/users/<id>} & does an account exist; is the bot a server admin (startup) \\
-\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); reactivate a deleted bot's account. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
+\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); reactivate a deleted bot's account; set \cmd{user_type: bot} on the bot itself at startup and on reused professor-bot accounts. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
 \cmd{POST /_synapse/admin/v1/reset_password/<id>} & reset links and reset codes. \cmd{logout_devices} is \cmd{true} for links from an admin and for \cmd{/recover}, \cmd{false} for links from \cmd{!password} (the user proved they hold a session, which keeps its keys) \\
 \cmd{POST /_synapse/admin/v1/deactivate/<id>} & deleting a professor bot \\
 \cmd{POST /_synapse/admin/v1/users/<id>/override_ratelimit} & the bot exempts itself at startup (0/0 = no limit); optionally professor bots \\
@@ -143,6 +143,15 @@ At startup the bot sets a rate-limit override for itself, which Synapse applies 
 rate limiters. If that fails, the startup check \cmd{ratelimit} reports it, and jobs still
 pause \cmd{jobs.delay_seconds} between items. A rate-limited request fails with \cmd{429
 M_LIMIT_EXCEEDED}; mautrix doesn't retry it, so the user sees an error rather than a delay.
+
+\section{Terms and conditions}
+
+The server requires every user to agree to the terms (\cmd{user_consent} in
+\cmd{homeserver.yaml}); until they do, Synapse refuses their messages. Accounts with
+\cmd{user_type: bot} are exempt. At startup the bot sets that type on its own account (check
+\cmd{bot_type}), professor-bot accounts are created with it, and a reused account (a name
+used again) gets it before the bot starts. The exemption doesn't depend on the terms
+version, so publishing new terms doesn't affect bots.
 
 \section{The signup web app}
 

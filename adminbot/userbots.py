@@ -382,6 +382,10 @@ class BotManager:
             await synapse.reset_password(user_id, password, logout_devices=True)
         else:
             await synapse.create_user(user_id, password, displayname, user_type="bot")
+        if existing and existing.get("user_type") != "bot":
+            # reused account that isn't marked as a bot yet: without the type it can't send
+            # messages until someone agrees to the terms (user_consent) in its name
+            await synapse.set_user_type(user_id, "bot")
         if self.cfg["user_bots.ratelimit_exempt"]:
             await synapse.override_ratelimit(user_id)
         access_token, device_id = await synapse.login(user_id, password, "maubot")
