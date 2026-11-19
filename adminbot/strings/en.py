@@ -18,7 +18,7 @@ STRINGS: dict[str, str] = {
     "usage.cancel": "`!cancel`: drop your pending plan, or stop me waiting for a file",
     "usage.admin.prof": "`!admin prof add|remove|list [@user]`: who counts as a professor",
     "usage.admin.audit": "`!admin audit [n]`: the last n audit entries",
-    "usage.admin.bots": "`!admin bots pending|approve <id>|reject <id> [reason]|disable-all`: bot requests and the kill switch",
+    "usage.admin.bots": "`!admin bots pending|show <id>|approve <id>|reject <id> [reason]|disable-all`: bot requests and the kill switch",
     "usage.course.create": '`!course create <code> "<title>" [--semester HS26] [--template <name>]`: new course',
     "usage.course.list": "`!course list`: your courses",
     "usage.course.info": "`!course info <code>`: staff, rooms, numbers of a course",
@@ -429,7 +429,7 @@ Bot admins see every professor bot; `!bot list @owner:server` shows only that pe
 **Which bot:** `<bot>` is the bot's name, e.g. `quiz-bot`. Bot admins can also name other people's bots: by name alone if only one owner has a bot with that name, as `@owner:server <name>`, or by the bot's account `@bot.<owner>.<name>:server` (`!bot list` shows all three).
 
 **Who:** the bot's owner and bot admins.""",
-    "help.bot.delete": """Deletes a bot: it is stopped and removed, and its account is deactivated. The plugin is removed too if no other bot uses it. You confirm this with `!confirm`. You can later create a bot with the same name again.
+    "help.bot.delete": """Deletes a bot: it is stopped and removed, its account is logged out and locked, and its name gets \"– removed\" in every room it is in, so people there see it no longer works. I tell you which rooms those are. The plugin is removed too if no other bot uses it. You confirm this with `!confirm`. You can later create a bot with the same name again: it gets the same account back, verified, and is back in the rooms it was still in.
 - `!bot delete <bot>`: one bot
 - `!bot delete all`: all your bots; for bot admins, **every professor bot** on the server
 - `!bot delete all @owner:server`: all bots of one person (bot admins)
@@ -454,11 +454,16 @@ The admin bot itself is never deleted this way. To only stop all bots for a mome
 **Who:** bot admins.""",
     "help.admin.bots": """Professor bots awaiting approval, and the kill switch.
 - `!admin bots pending`: open requests
+- `!admin bots show <id>`: sends you the package to look at, for an update also the changes since the running version (as a .diff file), and every finding of the static check
 - `!admin bots approve <id>`: set the bot up (the professor is told)
 - `!admin bots reject <id> [reason]`: the professor gets the reason
 - `!admin bots disable-all`: stop every professor bot at once (emergency)
 
-New requests also appear in the audit room with the plugin ID, version, checksum and dependencies.
+New requests also appear in the audit room with the plugin ID, version, checksum and dependencies, a summary of the package (files, lines of code, web endpoints, database), what a static check of the code found, and for an update how much changed.
+
+**What to look at:** the static check flags code that leaves the normal plugin API: running programs or code built from strings, native code, maubot's internals, direct database access, and the usual tricks to hide such things. Read those lines first (`!admin bots show`). For an update, read the diff. A clean check is a hint, not a guarantee: Python can hide what it does. What protects the server is that professor bots run in their own maubot without access to the admin bot or Synapse's database.
+
+Packages may only contain source code, text files, images and fonts, so everything in them can be read; compiled files and archives are refused when the professor uploads.
 
 To see and manage the running bots, use the `!bot` commands; as a bot admin they work on every professor's bots: `!bot list`, `!bot info|start|stop|config|delete <bot>`, `!bot delete all [@owner]`. See `!help bot delete`.
 
@@ -523,6 +528,7 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "err.yaml_invalid": "That is not valid YAML: {detail}\nCheck the indentation (spaces, no tabs).",
     "err.bots_disabled": "Professor bots are not enabled on this server. Ask a bot admin if you need one.",
     "err.bot_name": "'{name}' can't be a bot name. Use 1-24 lowercase letters, digits and '-', starting with a letter or digit, e.g. quiz-bot.",
+    "err.bot_account_foreign": "The account {user_id} that this bot would use already exists, and I didn't create it, so I won't touch it. Choose another name for your bot. The bot admins were told.",
     "err.bot_exists": "You already have a bot called {name}. To upload a new version use `!bot update {name}`; to start over, `!bot delete {name}` first.",
     "err.bot_unknown": "There is no bot called {name}. `!bot list` shows your bots.",
     "err.bot_name_reserved": "'{name}' can't be a bot name: the `!bot` commands use it as a keyword (`!bot delete all`). Pick another name, e.g. {name}-bot.",
@@ -530,6 +536,7 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "err.bot_quota": "You already have {limit} bots, the maximum. Delete one with `!bot delete <name>`, or ask a bot admin for an exception.",
     "err.bot_unchanged": "{name} already runs exactly this file (version {version}). If you changed the code, raise `version:` in maubot.yaml, run `mbc build` again and send the new .mbp.",
     "err.bot_no_recovery_key": "the account already has cross-signing keys, but I have no recovery key for them",
+    "err.bot_package_gone": "The package of request #{id} is no longer stored: only open requests and each bot's running version are kept. `!bot list` shows the bots.",
     "err.bot_request_unknown": "There is no open bot request #{id}. `!admin bots pending` lists the open ones.",
     "err.mbp_invalid": "That is not a usable maubot plugin: {detail}.",
     "err.mbp_dependencies": "The plugin needs Python packages that this server doesn't have: {deps}. Plugins can only use the packages that come with maubot. Remove the dependency from maubot.yaml (and from your code), or ask a bot admin whether it can be added to the server.",
@@ -640,7 +647,28 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     # professor bots
     "msg.bot_requested": "Request #{id} for your bot **{name}** is waiting for an admin's approval. I'll message you here as soon as it's decided; there is nothing more to do for now.",
     "msg.bot_provisioning": "Setting up bot **{name}** ... I'll message you here when it's running (usually within a minute).",
-    "msg.bot_request_audit": "Bot request **#{id}** ({action}) from {owner}: `{name}`, plugin `{plugin_id}` v{version}, sha256 `{sha256}`, dependencies: {deps}\n`!admin bots approve {id}` or `!admin bots reject {id} [reason]`",
+    "msg.bot_request_audit": "Bot request **#{id}** ({action}) from {owner}: `{name}`, plugin `{plugin_id}` v{version}, sha256 `{sha256}`, dependencies: {deps}\n\n{review}\n\n`!admin bots show {id}` sends you the package to look at. Then `!admin bots approve {id}` or `!admin bots reject {id} [reason]`",
+    "msg.review_package": "**Package:** {files} files, {py_files} Python file(s) with {lines} lines of code. Web endpoints: {webapp}. Database: {database}.",
+    "msg.review_changes": "**Changes since the running v{version}:** {changed} file(s) changed, {added} added, {removed} removed; +{plus} −{minus} lines.",
+    "msg.review_checks": "**Needs a look ({count}):**",
+    "msg.review_new": " (new)",
+    "msg.review_clean": "**Static check:** nothing that needs a look.",
+    "msg.review_uses": "**Uses:** {uses}",
+    "msg.review_disclaimer": "_The static check finds the usual ways out of the plugin API, not everything._",
+    "msg.bot_review_full": "**Request #{id}**: `{name}` v{version} from {owner}. The package is attached{diff}.\n\n{findings}\n\n`!admin bots approve {id}` or `!admin bots reject {id} [reason]`",
+    "msg.bot_review_diff_sent": ", and the changes since the running version as a .diff file",
+    "review.cat.exec": "runs code built from strings or loaded at run time",
+    "review.cat.process": "starts or signals programs",
+    "review.cat.native": "native code or raw memory",
+    "review.cat.unpickle": "loads pickled objects (can run code)",
+    "review.cat.socket": "raw network sockets",
+    "review.cat.database": "connects to a database directly (instead of the plugin database)",
+    "review.cat.internals": "maubot internals beyond the plugin API",
+    "review.cat.hiding": "hides names or data (often used to disguise code)",
+    "review.cat.syntax": "Python that doesn't parse",
+    "review.cat.network": "network",
+    "review.cat.files": "files",
+    "review.cat.environment": "environment variables",
     "msg.bot_requests": "**Pending bot requests**\n{requests}",
     "msg.bot_request_line": "- #{id} {action} `{name}` by {owner}: `{plugin_id}` v{version}",
     "msg.bot_approved": "Request #{id} approved, job #{job} sets it up. The owner is told when it's running.",
@@ -648,6 +676,7 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "msg.bot_rejected": "Your bot request **{name}** was rejected by {admin}. Reason: {reason}\nIf you have questions, contact {admin}. Once the problem is fixed you can send `!bot create {name}` again.",
     "msg.bot_ready": "Your bot **{name}** is running as {user_id} (plugin `{plugin_id}`).\n\n**Next steps**\n- Invite {user_id} to a room (room info, then *Invite*); it joins by itself.\n- `!bot info {name}` shows its status, `!bot config {name}` its settings.",
     "msg.bot_unverified": "Note: I couldn't verify the bot's device. It works, but Element marks it as unverified, and in encrypted rooms some clients may not let it read messages. The bot admins were told; you don't need to do anything.",
+    "msg.bot_account_foreign_audit": "Refused to use {user_id} for a professor bot: the account exists, but I didn't create it. Accounts starting with `bot.` are reserved for professor bots; check who created it (e.g. in Ketesa) and deactivate it if it isn't needed.",
     "msg.bot_unverified_audit": "Couldn't cross-sign professor bot {user_id}: {detail}\nThe bot runs, but unverified. `!bot delete` and `!bot create` try again; see README, *Professor bots and E2EE*.",
     "msg.bot_updated": "Bot **{name}** now runs version {version}.",
     "msg.bot_list": "**Bots of {owner}** ({count})\n{bots}",
@@ -660,8 +689,14 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "msg.bot_started": "Bot **{name}** started.",
     "msg.bot_stopped_now": "Bot **{name}** stopped. It keeps its rooms; `!bot start {name}` starts it again.",
     "msg.bot_config_saved": "Config of **{name}** saved. The bot uses it right away.",
-    "msg.bot_delete_plan": "Delete bot **{name}**: it is stopped and removed, and its account {user_id} is deactivated.",
-    "msg.bot_delete_all_plan": "Delete **{count}** bot(s): each is stopped and removed, and its account deactivated.\n{bots}",
+    "msg.bot_removed_displayname": "{name} – removed",
+    "msg.bot_still_in_rooms": "It is still listed as a member of {count} room(s), as \"... – removed\". People there can see it no longer works; remove it where you can (room settings, *People*), or leave it:\n{rooms}",
+    "msg.bot_deleted_rooms": "Your bot **{name}** is deleted. {rooms}",
+    "msg.bot_back_in_rooms": "It is back in {count} room(s) it was in before it was deleted, and works there again. Remove it where it is no longer wanted:\n{rooms}",
+    "msg.unnamed_room": "unnamed room (e.g. a direct chat)",
+    "msg.more_rooms": "... and {count} more",
+    "msg.bot_delete_plan": "Delete bot **{name}**: it is stopped and removed, and its account {user_id} is logged out and locked. Its name in the rooms it is in changes to \"... – removed\".",
+    "msg.bot_delete_all_plan": "Delete **{count}** bot(s): each is stopped and removed, and its account logged out and locked.\n{bots}",
     "msg.bot_delete_none": "There are no bots to delete. `!bot list` shows the bots.",
     # --- notices: changes someone else made to your roles, courses or bots (Notices.tell) -------
     "msg.notice.prof_added": "**You are now a professor** on this server ({actor} added you). You can create courses (`!course create`), appoint TAs and request your own bots.\n\nSend me `!help` to see what you can do. Commands go here, in our direct chat.",
@@ -675,7 +710,7 @@ To see and manage the running bots, use the `!bot` commands; as a bot admin they
     "msg.notice.bot_started": "{actor} **started your bot {name}**. `!bot info {name}` shows its status.",
     "msg.notice.bot_stopped": "{actor} **stopped your bot {name}**. It keeps its rooms and settings. `!bot start {name}` starts it again; if it was stopped for a reason, ask {actor} first.",
     "msg.notice.bot_config": "{actor} **changed the config of your bot {name}**. The bot uses it right away; `!bot config {name}` downloads the current one.",
-    "msg.notice.bot_deleted": "{actor} **deleted your bot {name}**: it was removed and its account deactivated. Questions? Contact {actor}. `!bot create {name}` requests a new one.",
+    "msg.notice.bot_deleted": "{actor} **deleted your bot {name}**: it was removed and its account locked. Questions? Contact {actor}. `!bot create {name}` requests a new one.\n\n{rooms}",
     "msg.notice.bots_disabled_all": "A bot admin ({actor}) **stopped all professor bots**, including yours: {bots}. They stay set up. Ask {actor} before starting them again with `!bot start <name>`.",
     "msg.bots_disabled_all": "Stopped {count} professor bots. Owners can start theirs again with `!bot start`.",
     # --- signup pages ---------------------------------------------------------------------------

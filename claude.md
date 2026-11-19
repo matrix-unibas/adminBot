@@ -36,12 +36,18 @@ Infrastructure changes outside the plugin are listed in §16 (I1–I11); how to 
 - **Recovery keys can't be restored by the server.** The plugin tells users to save them (signup page, welcome, notices) and explains *Reset identity*. Forcing the setup is an Element client setting served in the well-known file: new infra item I11.
 - Handbook: §4.5 "Passwords and lost keys" (with a text for students), troubleshooting, glossary (reset code vs recovery key), technical chapters (notices, I11, threat model of reset codes).
 
-**Changes after 0.3.2 (2026-11-19, not released yet)**
+**Changes in 1.1.0 (2026-11-19)** (1.0.0 was 0.3.2 plus the version bump)
 - **Welcome DM was unreadable.** `open_dm` creates the DM with the user only invited; mautrix, without a loaded member list, shares the room key with *joined* members only (the bot) and doesn't re-share when an invitee joins. `open_dm` now loads the full member list (`client.get_members`) first. DMs created before the fix keep their broken session until mautrix rotates it (7 days / 100 messages).
 - **`!help` overview: one line per command.** Subcommands by name only (`!course create|list|...`, `!password [code]`), a short `help.summary.<command>` text, and a footer explaining `!help <command>` and `!help <command> <sub>`.
 - **People are told about changes others make** (`Notices.tell`, held like other notices): professor or TA role added/removed; an admin's changes to their course (room add/remove, archive, rollover) or bots (start, stop, config, delete, delete all, `disable-all`). Not sent when users act on their own things. Not covered: `!invite`, `!roster`, `!groups` by admins in someone else's course; `!bot update` by an admin (the owner already gets "now runs version ...").
 
 - **The reset code has to be typed back in.** Signup and `/recover` no longer end on a page with the code. Step 1 shows it (and says it isn't Element's recovery key), step 2 (`POST /code`) asks for it again and compares hashes without using it up; *I didn't save it* issues a new one. Only then the final page, which explains the recovery key. The steps carry a nonce bound to account, context (`signup`/`reset`) and the current code hash; it keeps its first issue time (hard 1 h, using the steps never extends it) and dies when the code changes any other way.
+
+- **The bot manager only touches accounts it created.** Before, `!bot create` reset the password of any existing, active `@bot.<owner>.<name>` account and took it over; with open token registration (I8) or Ketesa anyone could have made one. Now `bot_account` (migration v4, filled from `user_bot` and `bot_recovery_key`) records every account the plugin creates, written *before* `create_user`. `BotManager.require_own_account` guards password reset, reactivation and deactivation, and `!bot create` refuses up front (`err.bot_account_foreign`, audit room told).
+- **A re-created bot was unverified.** Deactivation purges the account's account data (Synapse 1.157 `purge_account_data_for_user`, incl. secret storage) but keeps its cross-signing keys, so `/verify` with the stored recovery key failed (`No default key ID set`). Now `!bot delete` locks the account instead (§10: rename to "... – removed" so every room sees it, delete devices, lock, tell the owner which rooms it is still in); re-create unlocks it and the same identity verifies. Accounts deactivated before this are still reactivated, but stay unverified. Decided against: logging in as the bot to leave rooms (attack surface), backing up secret storage, new IDs per re-create.
+
+- **Approval aids** (`review.py`). Packages may only contain reviewable files (source, text, images, fonts; no `.pyc`/`__pycache__`/`.so`/archives). The request in the audit room summarises the package (files, lines, `webapp`, `database`) and a static AST check: process/exec/native/unpickle/socket/direct-DB/maubot internals (CHECK), the usual hiding tricks (computed `getattr`, dunders, decoders, long encoded strings), network/files/env (INFO). Updates: change counts against the running version, new findings marked "(new)". `!admin bots show <id>` sends the .mbp, the .diff and every finding. The running package is kept per bot (`bot_request.mbp` of the newest `done` request; older ones and all on delete are emptied). Policy: professors are trusted and admins won't read everything, so approval stays on by default as a conscious, audited decision; `user_bots.require_approval: false` turns it off.
+- **Found: the userbots maubot used the Postgres superuser** (infra repo `userbots/config.yaml.template`). A professor plugin could read Synapse's and the admin bot's databases and run commands in the Postgres container. New infra item **I12**: own role `userbots`, `REVOKE CONNECT ... FROM PUBLIC` on the other databases.
 
 **Changes in plugin 0.3.1 (2026-10-22): admins manage all professor bots**
 - The admin powers already existed but were hidden: admins pass every role check, and the `!bot` commands accepted `@owner <name>`. Now they are documented in `usage.*`/`help.*`.
@@ -428,9 +434,11 @@ Professors (own bots only) and admins (every professor bot). `<bot>` is the bot'
 - `!bot config <bot>`: returns the instance config YAML; with an attached YAML it updates it (`PUT .../instance/<id>` `config`)
 - `!bot start|stop <bot>`
 - `!bot delete <bot>`:
-  1. delete the instance and client
-  2. deactivate the account through the admin API
-  3. delete the plugin if no other instance uses it
+  1. delete the instance and client (maubot only forgets the login; the Synapse device stays)
+  2. rename the account to "<name> (<owner>) – removed" (Synapse updates the member event in every room), delete all its devices, lock it. **Not deactivated:** deactivation purges account data incl. the secret storage behind `bot_recovery_key`, so the same name could never be verified again. No login as the bot to leave rooms (attack surface); it stays a member, renamed.
+  3. delete the plugin if no other instance uses it (maubot moves the file to its trash folder unless `plugin_directories.trash: delete`)
+  4. tell the owner which rooms it is still in
+- Creating a bot with the name of a deleted one: unlock, reset password, restore the display name, log in; maubot answers 409 and `/verify` with the stored recovery key works (same identity). The bot is back in its old rooms; the ready message lists them.
 - `!bot delete all [@owner]`: the same for every bot in one confirmed job; admins: all professor bots (never the admin bot)
 
 Admin only:
@@ -576,6 +584,7 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 | I8 | open: `enable_registration` is still `true` |
 | I9 | done (`startup.md` updated) |
 | I11 | open (v7): well-known `secure_backup_required` |
+| I12 | open (1.1.0): own Postgres role for `userbots` (**before professors upload bots**) |
 
 **I1. Public route for the signup page** (`server/nginx/matrix.conf`)
 - Host nginx sends everything matching `^(/_matrix|…)` to Synapse, so `/_matrix/maubot/...` currently returns a Synapse 404.
@@ -639,3 +648,9 @@ The reasoning is here. The step-by-step guide with exact diffs is `server/docs/a
 - Why: a user who loses all sessions without a recovery key loses their encrypted history for good. The bot can reset passwords (§4), but it can't restore keys.
 - Check Element X on the test node (§15).
 - Also add the `/recover` path to the checklist for I1: it lives under the same `location ^~ /_matrix/maubot/plugin/<instance>/` prefix, so no nginx change is needed.
+
+**I12. Own Postgres role for userbots** (`postgres-init.sh`, `docker-compose.yml`, `userbots/config.yaml.template`, `.env.example`, `create_env.sh`, `setup.sh`, `restore.sh`)
+- The userbots maubot connected as `${POSTGRES_USER}`, the superuser that owns `synapse` and `maubot`. Plugins run in that process and can read its config file and use its connection, so a professor plugin could read every access token in Synapse's DB, the admin bot's token, and run shell commands in the Postgres container (`COPY ... FROM PROGRAM`). That voids the separation of §10.
+- New role `userbots` (`NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION`, password `USERBOTS_DB_PASSWORD`) owning the `userbots` database; `REVOKE CONNECT, TEMPORARY ON DATABASE <synapse>, maubot, postgres FROM PUBLIC`.
+- `restore.sh` restores the userbots dump with `--no-owner --role=userbots`.
+- Running server: dump userbots without owners, recreate the database owned by the new role, restore as that role, re-render the config. Exact steps in the 1.1.0 notes / admin-bot-setup.md.

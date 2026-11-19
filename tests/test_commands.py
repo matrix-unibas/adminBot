@@ -349,7 +349,7 @@ async def test_every_notice_text_renders(bot):
     from adminbot.strings.en import STRINGS
 
     params = {"actor": ADMIN, "code": "CS101", "title": "Intro", "semester": "FS27", "old_code": "CS101-HS26",
-              "name": "quiz", "bots": "`quiz`"}
+              "name": "quiz", "bots": "`quiz`", "rooms": "- [Room](https://matrix.to/#/!r:x)"}
     for key in STRINGS:
         if key.startswith("msg.notice."):
             assert "{" not in bot.notices.render(key, params), key

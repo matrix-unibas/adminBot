@@ -96,19 +96,44 @@ the main maubot, any uploaded plugin could take the admin bot's server-admin tok
         client appears there, the target is the main maubot, and bot commands are refused.
   \item \textbf{Package checks.} Size limits (packed and unpacked), \file{maubot.yaml} present
         and valid, the main module exists, no absolute or \cmd{..} paths, dependencies
-        available in the pinned image. The SHA-256 of the package is recorded and shown to
-        the approving admin.
+        available in the pinned image, and only reviewable files (source, text, images, fonts;
+        no compiled code, native libraries or archives). The SHA-256 of the package is
+        recorded and shown to the approving admin.
+  \item \textbf{Approval aids.} The request in the audit room summarises the package (files,
+        lines of code, web endpoints, database) and what a static check of the code found
+        (\file{review.py}): running programs or code built from strings, native code,
+        unpickling, raw sockets, direct database drivers, maubot internals beyond the plugin
+        API, and the usual tricks to hide such things (computed \cmd{getattr}, dunder
+        attributes, decoded or long encoded strings). For an update it counts the changes
+        against the running version and marks new findings. \cmd{!admin bots show <id>}
+        sends the package, the diff and every finding. To diff, the admin bot keeps a copy of
+        each bot's running package in its database (deleted with the bot). The check is an
+        aid, not a guarantee: Python can hide what it does. Admins can't be expected to read
+        every plugin, and professors are trusted; approval mainly makes sure a person decided
+        and the audit log names them. \cmd{user_bots.require_approval: false} turns it off.
   \item \textbf{Plugin ID ownership.} Plugin IDs are global in a maubot, and an upload with an
         existing ID replaces that plugin for every instance. The bot records the first
         uploader of each ID and refuses it for everyone else; the admin bot's own ID is
         reserved.
   \item \textbf{Approval, quota, kill switch.} Requests need an admin's approval (default),
         each professor has a quota (default 3), and \cmd{!admin bots disable-all} stops every
-        professor bot. \cmd{!bot delete all} removes them and deactivates their accounts; it
+        professor bot. \cmd{!bot delete all} removes them and locks their accounts; it
         only sees bots in the \cmd{user_bot} table, which the admin bot itself is never in.
   \item \textbf{Unprivileged accounts.} Bot accounts are normal users with \cmd{user_type: bot},
         named \cmd{@bot.<owner>.<name>}, and not exempt from rate limits unless configured. The
         bot type only exempts them from agreeing to the terms (\cmd{user_consent}).
+  \item \textbf{Locked, not deactivated.} A deleted bot's account is logged out everywhere
+        (devices deleted) and locked, so its tokens are refused and nobody can log in.
+        Deactivating would also purge its account data, including the secret storage behind
+        the stored recovery key, and the same name could never be verified again. The admin
+        bot never logs in as a bot to leave rooms; it renames the account instead, so the
+        rooms see it is gone, and tells the owner where it still is.
+  \item \textbf{Only its own accounts.} The admin bot resets passwords of, logs in to,
+        locks, unlocks and reactivates only \cmd{@bot.*} accounts it created itself (table
+        \cmd{bot_account}, written before the account is created). An existing
+        \cmd{@bot.*} account made another way, for example through open token
+        registration (I8) or Ketesa, is refused already at \cmd{!bot create}, and the
+        audit room is told.
   \item \textbf{Recovery keys.} Each bot's cross-signing recovery key is stored in the admin
         bot's database, which professor plugins can't reach, and is never shown to anyone.
         Whoever has it can sign devices as that bot account, so it is treated like the
@@ -117,7 +142,11 @@ the main maubot, any uploaded plugin could take the admin bot's server-admin tok
 
 \textbf{Remaining risk:} professor bots share one process with \emph{each other}. A
 malicious professor plugin could read another professor bot's token. Those tokens belong to
-unprivileged accounts; approval and the kill switch limit the exposure.
+unprivileged accounts; approval and the kill switch limit the exposure. This only holds if
+the \cmd{userbots} maubot connects to Postgres with its \emph{own}, unprivileged role that
+can reach only the \cmd{userbots} database (infra item I12): a plugin can read the maubot's
+config file and use its database connection, so with the superuser role it could read
+Synapse's and the admin bot's databases.
 
 \section{Known gaps}
 

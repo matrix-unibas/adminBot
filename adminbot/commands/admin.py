@@ -74,6 +74,18 @@ class AdminCommands(CommandGroup):
                 for r in requests
             ]
             await self.reply(evt, "msg.bot_requests", requests="\n".join(lines) or "-")
+        elif action == "show":
+            try:
+                request_id = int(a.get(1) or "")
+            except ValueError as e:
+                raise ArgError("err.bad_args", usage=usage) from e
+            request, findings, changes = await self.bot.bots.show(request_id)
+            await self.reply_file(evt, f"{request.plugin_id}-v{request.version}.mbp", request.mbp, "application/zip")
+            if changes:
+                await self.reply_file(evt, changes[0], changes[1].encode("utf-8"), "text/x-diff")
+            await self.reply(evt, "msg.bot_review_full", id=request.id, name=request.name, owner=request.owner,
+                             version=request.version, findings=findings,
+                             diff=t("msg.bot_review_diff_sent") if changes else "")
         elif action in ("approve", "reject"):
             try:
                 request_id = int(a.get(1) or "")

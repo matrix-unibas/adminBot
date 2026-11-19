@@ -197,3 +197,21 @@ async def upgrade_v3(conn: Connection, scheme: Scheme) -> None:
             created_at BIGINT NOT NULL
         )"""
     )
+
+
+@upgrade_table.register(description="Accounts the plugin created for professor bots")
+async def upgrade_v4(conn: Connection, scheme: Scheme) -> None:
+    # Only these accounts may be reset, reactivated or deactivated by the bot manager
+    # (BotManager.require_own_account). Rows are never deleted: an account stays ours after
+    # !bot delete. Filled from the bots that exist already.
+    await conn.execute(
+        """CREATE TABLE bot_account (
+            user_id    TEXT PRIMARY KEY,
+            created_at BIGINT NOT NULL
+        )"""
+    )
+    await conn.execute(
+        "INSERT INTO bot_account (user_id, created_at) "
+        "SELECT DISTINCT user_id, 0 FROM user_bot "
+        "UNION SELECT user_id, 0 FROM bot_recovery_key"
+    )

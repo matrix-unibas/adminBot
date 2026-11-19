@@ -81,6 +81,12 @@ async def bot(maubot_plugin) -> AdminBot:
     p.ops.joined_or_invited = AsyncMock(return_value=set())
     p.client.upload_media = AsyncMock(return_value="mxc://example.com/file")
     p.synapse.user_exists = AsyncMock(return_value=True)
+    p.synapse.get_user = AsyncMock(return_value=None)
+    p.synapse.set_displayname = AsyncMock()
+    p.synapse.set_locked = AsyncMock()
+    p.synapse.delete_all_devices = AsyncMock()
+    p.synapse.joined_rooms = AsyncMock(return_value=[])
+    p.synapse.room_label = AsyncMock(return_value="")
     p.synapse.create_user = AsyncMock()
     p.synapse.force_join = AsyncMock()
     yield p

@@ -38,9 +38,13 @@ class BotCommands(CommandGroup):
         await self.manager.provision_item(job, item)
 
     async def delete_item(self, job, item) -> None:
-        await self.manager.delete_item(job, item)
-        await self.bot.notices.tell(item.payload["owner"], job.requester, "msg.notice.bot_deleted",
-                                    name=item.payload["name"])
+        """The owner learns which rooms the bot is still listed in, also when they deleted it."""
+        rooms = await self.manager.delete_item(job, item)
+        owner, name = item.payload["owner"], item.payload["name"]
+        if owner != job.requester:
+            await self.bot.notices.tell(owner, job.requester, "msg.notice.bot_deleted", name=name, rooms=rooms)
+        elif rooms:
+            await self.bot.notices.send(owner, "msg.bot_deleted_rooms", name=name, rooms=rooms)
 
     async def target(self, evt: MessageEvent, a: Args, usage: str) -> UserBot:
         """`<name>` (own bot; admins: any bot with that name, if only one owner has it),

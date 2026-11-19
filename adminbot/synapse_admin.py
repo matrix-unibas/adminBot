@@ -70,12 +70,42 @@ class SynapseAdmin:
         )
 
     async def reactivate(self, user_id: UserID, password: str) -> None:
-        """A deleted professor bot whose name is used again gets its old account back."""
+        """Only for professor bots deleted before 1.1.0, when !bot delete still deactivated the
+        account (its secret storage is gone, so the bot comes back unverified)."""
         await self.client.api.request(Method.PUT, SynapseAdminPath.v2.users[user_id],
                                       {"deactivated": False, "password": password})
 
     async def deactivate(self, user_id: UserID, erase: bool = False) -> None:
         await self.client.api.request(Method.POST, SynapseAdminPath.v1.deactivate[user_id], {"erase": erase})
+
+    async def set_locked(self, user_id: UserID, locked: bool) -> None:
+        """A locked account can't log in, and its tokens are refused (M_USER_LOCKED). Unlike
+        deactivation it keeps its account data (secret storage), devices aside, and rooms."""
+        await self.client.api.request(Method.PUT, SynapseAdminPath.v2.users[user_id], {"locked": locked})
+
+    async def set_displayname(self, user_id: UserID, displayname: str) -> None:
+        """Synapse also updates the membership event in every room the user is in."""
+        await self.client.api.request(Method.PUT, SynapseAdminPath.v2.users[user_id], {"displayname": displayname})
+
+    async def delete_all_devices(self, user_id: UserID) -> None:
+        """Logs every session out: the access tokens stop working, the device keys are removed."""
+        resp = await self.client.api.request(Method.GET, SynapseAdminPath.v2.users[user_id].devices)
+        devices = [d["device_id"] for d in resp.get("devices", [])]
+        if devices:
+            await self.client.api.request(Method.POST, SynapseAdminPath.v2.users[user_id].delete_devices,
+                                          {"devices": devices})
+
+    async def joined_rooms(self, user_id: UserID) -> list[RoomID]:
+        resp = await self.client.api.request(Method.GET, SynapseAdminPath.v1.users[user_id].joined_rooms)
+        return [RoomID(r) for r in resp.get("joined_rooms", [])]
+
+    async def room_label(self, room_id: RoomID) -> str:
+        """Name, else alias, else '' (e.g. a DM), for lists shown to people."""
+        try:
+            room = await self.client.api.request(Method.GET, SynapseAdminPath.v1.rooms[room_id])
+        except MatrixRequestError:
+            return room_id
+        return room.get("name") or room.get("canonical_alias") or ""
 
     async def override_ratelimit(self, user_id: UserID) -> None:
         """0/0 means 'no limit' for this user."""

@@ -6,11 +6,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 from adminbot import userbots
-from adminbot.db import BotRequest, UserBot
+from adminbot.db import BotRequest, JobItem, UserBot
 from adminbot.errors import ValidationError
 from adminbot.userbots import BotManager, UserbotsClient, UserbotsError
 
 from .conftest import ADMIN, PROF, SERVER, wait_for_jobs
+from .test_mbp import make_mbp
 
 BOT_MXID = f"@bot.prof.quiz:{SERVER}"
 
@@ -62,14 +63,45 @@ async def test_new_bot_account_is_created_as_bot(bot, manager):
 async def test_reused_account_is_marked_as_bot(bot, manager, existing):
     """Without user_type bot the account can't send until it agrees to the terms (user_consent)."""
     bot.synapse.get_user = AsyncMock(return_value=existing)
+    await bot.store.add_bot_account(BOT_MXID)
     await manager._provision_create(request())
     bot.synapse.set_user_type.assert_awaited_once_with(BOT_MXID, "bot")
 
 
 async def test_reused_bot_account_is_left_alone(bot, manager):
     bot.synapse.get_user = AsyncMock(return_value={"deactivated": True, "user_type": "bot"})
+    await bot.store.add_bot_account(BOT_MXID)
     await manager._provision_create(request())
     bot.synapse.set_user_type.assert_not_awaited()
+
+
+async def test_new_account_is_recorded_before_it_is_created(bot, manager):
+    """A retry after a crash between create_user and the end of provisioning must still find it ours."""
+    bot.synapse.create_user = AsyncMock(side_effect=RuntimeError("crash"))
+    with pytest.raises(RuntimeError):
+        await manager._provision_create(request())
+    assert await bot.store.is_bot_account(BOT_MXID)
+
+
+@pytest.mark.parametrize("existing", [{"deactivated": False, "user_type": None},
+                                      {"deactivated": True, "user_type": "bot"}])
+async def test_account_the_plugin_did_not_create_is_never_taken_over(bot, manager, existing):
+    """E.g. someone registered @bot.prof.quiz with a registration token before the professor
+    asked for a bot called quiz: no password reset, no login, admins are told."""
+    bot.synapse.get_user = AsyncMock(return_value=existing)
+    with pytest.raises(ValidationError) as e:
+        await manager._provision_create(request())
+    assert e.value.key == "err.bot_account_foreign"
+    bot.synapse.reset_password.assert_not_awaited()
+    bot.synapse.reactivate.assert_not_awaited()
+    bot.synapse.login.assert_not_awaited()
+    assert BOT_MXID in manager.bot.audit.post.await_args.args[0]
+
+
+async def test_guard_only_accepts_the_bot_namespace(bot, manager):
+    await bot.store.add_bot_account(PROF)  # even if a non-bot ID somehow got into the table
+    with pytest.raises(ValidationError):
+        await manager.require_own_account(PROF)
 
 
 async def test_existing_keys_are_reused_with_stored_recovery_key(bot, manager):
@@ -131,6 +163,7 @@ async def add_bot(bot, owner: str, name: str) -> UserBot:
     user_bot = UserBot(owner, name, f"ch.unibas.{localpart}.{name}", f"{localpart}-{name}",
                        f"@bot.{localpart}.{name}:{SERVER}", "abc", "running")
     await bot.store.save_user_bot(user_bot)
+    await bot.store.add_bot_account(user_bot.user_id)  # provisioning records it
     return user_bot
 
 
@@ -180,13 +213,15 @@ async def test_same_name_for_two_owners_needs_the_owner(bot, chat, managed):
 
 async def test_admin_deletes_a_single_bot_of_someone_else(bot, chat, managed):
     poll = await add_bot(bot, OTHER, "poll")
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": False})
     plan = (await chat.send("!bot delete poll", sender=ADMIN))[0]
     code = re.search(r"!confirm (\w+)", plan).group(1)
     await chat.send(f"!confirm {code}", sender=ADMIN)
     await wait_for_jobs(bot)
     assert await bot.store.get_user_bot(OTHER, "poll") is None
     managed.client.delete_instance.assert_awaited_once_with(poll.instance_id)
-    bot.synapse.deactivate.assert_awaited_once_with(poll.user_id)
+    bot.synapse.set_locked.assert_awaited_once_with(poll.user_id, True)
+    bot.synapse.deactivate.assert_not_awaited()
 
 
 async def test_delete_all(bot, chat, managed):
@@ -201,12 +236,21 @@ async def test_delete_all(bot, chat, managed):
     # An admin's means every professor bot.
     plan = (await chat.send("!bot delete all", sender=ADMIN))[0]
     assert "**3** bot(s)" in plan
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": False})
     code = re.search(r"!confirm (\w+)", plan).group(1)
     await chat.send(f"!confirm {code}", sender=ADMIN)
     await wait_for_jobs(bot)
     assert await bot.store.list_user_bots() == []
-    assert bot.synapse.deactivate.await_count == 3
+    assert bot.synapse.set_locked.await_count == 3
     assert "no bots to delete" in (await chat.send("!bot delete all", sender=ADMIN))[0]
+
+
+async def test_create_refuses_a_name_whose_account_someone_else_holds(bot, chat, managed):
+    """The professor learns it before uploading anything."""
+    bot.audit.post = AsyncMock()
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": False})
+    reply = (await chat.send("!bot create quiz", sender=PROF))[0]
+    assert "didn't create it" in reply and "another name" in reply
 
 
 async def test_keywords_are_not_bot_names():
@@ -244,3 +288,111 @@ async def test_disable_all_tells_owners_of_running_bots(bot, chat, managed):
     await chat.send("!admin bots disable-all", sender=ADMIN)
     sent = {c.args[0]: c.kwargs["bots"] for c in bot.notices.send.await_args_list}
     assert sent == {OTHER: "`poll`", PROF: "`quiz`"}
+
+
+# --- delete locks the account, re-create unlocks it (plan §10) ----------------------------------
+
+ROOMS = [f"!course:{SERVER}", f"!dm:{SERVER}"]
+
+
+async def test_delete_retires_the_account_but_keeps_it(bot, manager):
+    """Not deactivated: that would purge the secret storage, and the same name could never be
+    verified again. Renamed so every room sees it, sessions logged out, then locked."""
+    quiz = await add_bot(bot, PROF, "quiz")
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": False})
+    bot.synapse.deactivate = AsyncMock()
+    bot.synapse.joined_rooms = AsyncMock(return_value=ROOMS)
+    bot.synapse.room_label = AsyncMock(side_effect=lambda r: "CS101 [General]" if "course" in r else "")
+    calls = []
+    for name in ("set_displayname", "delete_all_devices", "set_locked"):
+        getattr(bot.synapse, name).side_effect = lambda *a, n=name: calls.append(n)
+    rooms = await manager.delete_item(None, JobItem(0, 0, {"owner": PROF, "name": "quiz"}, "pending", None))
+    assert calls == ["set_displayname", "delete_all_devices", "set_locked"]
+    assert bot.synapse.set_displayname.await_args.args == (quiz.user_id, "quiz (prof) – removed")
+    bot.synapse.deactivate.assert_not_awaited()
+    assert "2 room(s)" in rooms and f"[CS101 General](https://matrix.to/#/{ROOMS[0]})" in rooms
+    assert "unnamed room" in rooms
+
+
+async def test_owner_learns_where_their_deleted_bot_still_is(bot, chat, managed):
+    await add_bot(bot, PROF, "quiz")
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": False})
+    bot.synapse.joined_rooms = AsyncMock(return_value=ROOMS[:1])
+    bot.notices.send = AsyncMock()
+    plan = (await chat.send("!bot delete quiz", sender=PROF))[0]
+    await chat.send(f"!confirm {re.search(r'!confirm (\w+)', plan).group(1)}", sender=PROF)
+    await wait_for_jobs(bot)
+    [call] = bot.notices.send.await_args_list
+    assert call.args[:2] == (PROF, "msg.bot_deleted_rooms") and ROOMS[0] in call.kwargs["rooms"]
+
+
+async def test_recreated_bot_gets_its_locked_account_back_verified(bot, manager):
+    """Same account, same keys: the stored recovery key verifies the new device."""
+    await bot.store.add_bot_account(BOT_MXID)
+    await bot.store.set_bot_recovery_key(BOT_MXID, "stored key")
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": False, "locked": True, "user_type": "bot"})
+    bot.synapse.joined_rooms = AsyncMock(return_value=ROOMS[:1])
+    manager.client.generate_recovery_key.return_value = None  # 409: the account has keys
+    await manager._provision_create(request())
+    bot.synapse.set_locked.assert_awaited_once_with(BOT_MXID, False)
+    bot.synapse.reset_password.assert_awaited_once()
+    bot.synapse.set_displayname.assert_awaited_once_with(BOT_MXID, "quiz (prof)")
+    bot.synapse.create_user.assert_not_awaited()
+    manager.client.verify.assert_awaited_once_with(BOT_MXID, "stored key")
+    ready = manager.bot.ops.send.await_args.args[1]
+    assert "back in 1 room(s)" in ready and ROOMS[0] in ready and "couldn't verify" not in ready
+
+
+async def test_bot_deleted_before_locking_is_reactivated(bot, manager):
+    """Accounts deactivated by !bot delete before 1.1.0 still come back (unverified)."""
+    await bot.store.add_bot_account(BOT_MXID)
+    bot.synapse.get_user = AsyncMock(return_value={"deactivated": True, "user_type": "bot"})
+    await manager._provision_create(request())
+    bot.synapse.reactivate.assert_awaited_once()
+    bot.synapse.set_locked.assert_not_awaited()
+
+
+# --- approval aids: summary, kept package, diff, show (plan §10) --------------------------------
+
+QUIZ_META = "maubot: 0.1.0\nid: ch.unibas.prof.quiz\nversion: {v}\nmodules: [quiz]\nmain_class: Quiz\n"
+QUIZ = "from maubot import Plugin\n\n\nclass Quiz(Plugin):\n    pass\n"
+
+
+def quiz_package(version: str, code: str = QUIZ) -> bytes:
+    return make_mbp({"maubot.yaml": QUIZ_META.format(v=version), "quiz/__init__.py": code})
+
+
+async def provision(bot, manager, request_id: int) -> None:
+    await bot.store.set_bot_request_state(request_id, "approved")
+    await manager.provision_item(None, JobItem(0, 0, {"request_id": request_id}, "pending", None))
+
+
+async def test_admins_get_a_review_and_updates_a_diff(bot, manager, chat, maubot_test_bot):
+    bot.config["user_bots.require_approval"] = True
+    first = await manager.request(PROF, "quiz", quiz_package("1.0"), "create", PROF)
+    text = manager.bot.audit.post.await_args.args[0]
+    assert "nothing that needs a look" in text and f"!admin bots show {first.id}" in text
+
+    await provision(bot, manager, first.id)
+    assert await bot.store.deployed_package(PROF, "quiz") == ("1.0", quiz_package("1.0"))
+
+    second = await manager.request(PROF, "quiz", quiz_package("1.1", QUIZ + "exec(x)\n"), "update", PROF)
+    text = manager.bot.audit.post.await_args.args[0]
+    assert "Changes since the running v1.0:** 2 file(s) changed" in text and "(new)" in text
+
+    bot.bots = manager
+    bot.client.upload_media = AsyncMock(return_value="mxc://example.com/file")
+    replies = await chat.send(f"!admin bots show {second.id}", sender=ADMIN)
+    assert replies[0] == "ch.unibas.prof.quiz-v1.1.mbp" and replies[1] == "quiz-v1.0-to-v1.1.diff"
+    full = manager.bot.ops.send.await_args.args[1]  # text replies go through the mocked ops.send here
+    assert "`exec()` quiz/__init__.py:6 (new)" in full and "changes since the running version" in full
+
+    # The new version replaces the kept one; deleting the bot drops it.
+    await provision(bot, manager, second.id)
+    assert (await bot.store.deployed_package(PROF, "quiz"))[0] == "1.1"
+    assert (await bot.store.get_bot_request(first.id)).mbp == b""
+    bot.synapse.get_user = AsyncMock(return_value=None)
+    await manager.delete_item(None, JobItem(0, 0, {"owner": PROF, "name": "quiz"}, "pending", None))
+    assert await bot.store.deployed_package(PROF, "quiz") is None
+    await chat.send(f"!admin bots show {second.id}", sender=ADMIN)
+    assert "no longer stored" in manager.bot.ops.send.await_args.args[1]

@@ -23,12 +23,13 @@ All calls go through mautrix (\cmd{client.api.request} with \cmd{SynapseAdminPat
 \textbf{Endpoint} & \textbf{Used for} \\
 \midrule
 \cmd{GET /_synapse/admin/v2/users/<id>} & does an account exist; is the bot a server admin (startup) \\
-\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); reactivate a deleted bot's account; set \cmd{user_type: bot} on the bot itself at startup and on reused professor-bot accounts. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
+\cmd{PUT /_synapse/admin/v2/users/<id>} & create accounts from signup links (password, display name, email threepids) and professor-bot accounts (\cmd{user_type: bot}); rename a deleted bot (\enquote{\dots{} -- removed}), lock and unlock its account (\cmd{locked}); reactivate bots deleted before 0.3.3; set \cmd{user_type: bot} on the bot itself at startup and on reused professor-bot accounts. The endpoint also \emph{modifies} existing users, so the bot checks first that the account doesn't exist. \\
 \cmd{POST /_synapse/admin/v1/reset_password/<id>} & reset links and reset codes. \cmd{logout_devices} is \cmd{true} for links from an admin and for \cmd{/recover}, \cmd{false} for links from \cmd{!password} (the user proved they hold a session, which keeps its keys) \\
-\cmd{POST /_synapse/admin/v1/deactivate/<id>} & deleting a professor bot \\
+\cmd{GET /_synapse/admin/v2/users/<id>/devices}, \cmd{POST .../delete_devices} & deleting a professor bot logs out all its sessions before the account is locked \\
+\cmd{GET /_synapse/admin/v1/rooms/<room>} & room names for the owner's list of rooms a deleted bot is still in \\
 \cmd{POST /_synapse/admin/v1/users/<id>/override_ratelimit} & the bot exempts itself at startup (0/0 = no limit); optionally professor bots \\
 \cmd{POST /_synapse/admin/v1/join/<room>} & force-join new users into their course after signup \\
-\cmd{GET /_synapse/admin/v1/users/<id>/joined_rooms} & \cmd{!bot info} (room count) \\
+\cmd{GET /_synapse/admin/v1/users/<id>/joined_rooms} & \cmd{!bot info} (room count); the rooms a deleted or re-created bot is in \\
 \bottomrule
 \end{tabularx}
 \end{center}

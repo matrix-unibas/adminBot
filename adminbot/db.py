@@ -569,6 +569,21 @@ class Store:
         if drop_package:
             await self.db.execute("UPDATE bot_request SET mbp=$2 WHERE id=$1", request_id, b"")
 
+    async def deployed_package(self, owner: UserID, name: str) -> tuple[str, bytes] | None:
+        """(version, package) of the bot's running version, if a copy is kept (since 1.1.0)."""
+        q = (
+            "SELECT version, mbp FROM bot_request WHERE owner=$1 AND name=$2 AND state='done' "
+            "AND length(mbp) > 0 ORDER BY id DESC LIMIT 1"
+        )
+        row = await self.db.fetchrow(q, owner, name)
+        return (row["version"], bytes(row["mbp"])) if row else None
+
+    async def drop_bot_packages(self, owner: UserID, name: str, keep: int | None = None) -> None:
+        """Delete the stored packages of a bot's decided requests, except `keep`. Pending requests
+        keep theirs until an admin decides."""
+        q = "UPDATE bot_request SET mbp=$3 WHERE owner=$1 AND name=$2 AND state<>'pending' AND id<>$4"
+        await self.db.execute(q, owner, name, b"", keep if keep is not None else -1)
+
     async def save_user_bot(self, bot: UserBot) -> None:
         q = (
             "INSERT INTO user_bot (owner, name, plugin_id, instance_id, user_id, sha256, state) "
@@ -614,6 +629,15 @@ class Store:
         return await self.db.fetchval(q, plugin_id)
 
     # --- bot recovery keys ---------------------------------------------------------------------
+
+    async def add_bot_account(self, user_id: UserID) -> None:
+        """Record that the plugin creates this account (before creating it, so a retry after a
+        crash still knows it is ours)."""
+        q = "INSERT INTO bot_account (user_id, created_at) VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING"
+        await self.db.execute(q, user_id, now_ms())
+
+    async def is_bot_account(self, user_id: UserID) -> bool:
+        return await self.db.fetchval("SELECT 1 FROM bot_account WHERE user_id=$1", user_id) is not None
 
     async def get_bot_recovery_key(self, user_id: UserID) -> str | None:
         return await self.db.fetchval("SELECT recovery_key FROM bot_recovery_key WHERE user_id=$1", user_id)

@@ -6,7 +6,7 @@ could read the admin bot's server-admin token. is_separate_from() guards against
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 import hashlib
 import importlib.metadata
@@ -26,6 +26,8 @@ from ruamel.yaml.error import YAMLError
 from .confirm import Plan
 from .db import BotRequest, Job, JobItem, UserBot
 from .errors import NotFound, ValidationError
+from . import review
+from .identity import is_bot_account
 from .strings import t
 
 if TYPE_CHECKING:
@@ -37,6 +39,8 @@ PLUGIN_ID_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{1,127}$")
 BOT_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{0,23}$")
 # Words the !bot commands read as keywords (`!bot delete all`, `!bot info help`).
 RESERVED_BOT_NAMES = frozenset({"all", "help"})
+# Rooms listed by name when a bot is deleted or comes back; the rest only as a count.
+MAX_LISTED_ROOMS = 20
 OWN_PLUGIN_ID = "ch.unibas.dmi.marvin.adminbot"
 VERIFY_ATTEMPTS = 5
 VERIFY_RETRY_SECONDS = 2
@@ -53,6 +57,11 @@ class MbpInfo:
     dependencies: list[str]
     sha256: str
     size: int
+    meta: dict = field(default_factory=dict)  # the parsed maubot.yaml
+
+
+# Locations shown per category in the approval request; `!admin bots show` lists all.
+REVIEW_LOCATIONS = 3
 
 
 def _invalid(detail: str) -> ValidationError:
@@ -77,6 +86,12 @@ def validate_mbp(data: bytes, max_size: int) -> MbpInfo:
         names.add(name)
     if sum(info.file_size for info in infos) > max_size * 10:
         raise _invalid("the unpacked files are too large")
+    unreviewable = review.unreviewable_files(archive)
+    if unreviewable:
+        listed = ", ".join(f"'{n}'" for n in unreviewable[:5]) + (" ..." if len(unreviewable) > 5 else "")
+        raise _invalid(f"it contains files that can't be reviewed ({listed}). A package may only contain source "
+                       "code, text files, images and fonts, no compiled files (.pyc, .so, `__pycache__`) and no "
+                       "archives. Remove them and run `mbc build` again")
     if "maubot.yaml" not in names:
         raise _invalid("there is no maubot.yaml at the top level of the archive (run `mbc build` in the folder that contains maubot.yaml)")
     try:
@@ -107,7 +122,61 @@ def validate_mbp(data: bytes, max_size: int) -> MbpInfo:
     return MbpInfo(
         plugin_id=plugin_id, version=version, modules=modules, main_class=main_class,
         dependencies=[str(d) for d in dependencies], sha256=hashlib.sha256(data).hexdigest(), size=len(data),
+        meta=meta,
     )
+
+
+def format_findings(findings: list[review.Finding], new_keys: set | None = None,
+                    locations: int | None = REVIEW_LOCATIONS) -> str:
+    """Markdown: what needs a look, then what the plugin uses. new_keys marks findings the
+    running version didn't have. locations=None lists every place."""
+    lines = []
+    grouped = review.group(findings)
+    checks = [(cat, items) for (sev, cat), items in grouped.items() if sev == review.CHECK]
+    if checks:
+        lines.append(t("msg.review_checks", count=sum(len(i) for _, i in checks)))
+        for category, items in checks:
+            shown = items if locations is None else items[:locations]
+            places = ", ".join(
+                f"`{f.detail}` {f.file}:{f.line}" + (t("msg.review_new") if new_keys and f.key in new_keys else "")
+                for f in shown
+            )
+            more = t("msg.more_rooms", count=len(items) - len(shown)) if len(items) > len(shown) else ""
+            lines.append(f"- {t('review.cat.' + category)}: {places}{' ' + more if more else ''}")
+    else:
+        lines.append(t("msg.review_clean"))
+    infos = [(cat, items) for (sev, cat), items in grouped.items() if sev == review.INFO]
+    if infos:
+        uses = "; ".join(f"{t('review.cat.' + cat)} (`" + "`, `".join(sorted({f.detail for f in items})) + "`)"
+                         for cat, items in infos)
+        lines.append(t("msg.review_uses", uses=uses))
+    return "\n".join(lines)
+
+
+def package_meta(data: bytes) -> dict:
+    """maubot.yaml of a package that passed validate_mbp once."""
+    return YAML(typ="safe").load(zipfile.ZipFile(io.BytesIO(data)).read("maubot.yaml")) or {}
+
+
+def format_review(info: MbpInfo, data: bytes, deployed: tuple[str, bytes] | None) -> str:
+    """The part of an approval request that helps decide: contents, static check and, for an
+    update, what changed since the running version (deployed = its version and package)."""
+    report = review.analyze(data, info.meta)
+    yes, no = t("msg.yes"), t("msg.no")
+    lines = [t("msg.review_package", files=len(report.files), py_files=report.python_files,
+               lines=report.python_lines, webapp=yes if report.webapp else no,
+               database=yes if report.database else no)]
+    new_keys = None
+    if deployed:
+        old_version, old_data = deployed
+        changes = review.diff(old_data, data, f"v{old_version}", f"v{info.version}")
+        lines.append(t("msg.review_changes", version=old_version, changed=len(changes.changed),
+                       added=len(changes.added), removed=len(changes.removed), plus=changes.plus,
+                       minus=changes.minus))
+        new_keys = review.new_since(report.findings, review.analyze(old_data, package_meta(old_data)).findings)
+    lines.append(format_findings(report.findings, new_keys))
+    lines.append(t("msg.review_disclaimer"))
+    return "\n".join(lines)
 
 
 def missing_dependencies(dependencies: list[str]) -> list[str]:
@@ -266,12 +335,27 @@ class BotManager:
         return name
 
     async def check_can_create(self, owner: UserID, name: str) -> None:
-        """Name free and quota not reached (admins have no quota)."""
+        """Name free, its account not taken by someone else, quota not reached (admins have no quota)."""
         if await self.bot.store.get_user_bot(owner, name):
             raise ValidationError("err.bot_exists", name=name)
+        user_id = self.bot_user_id(owner, name)
+        if await self.bot.synapse.get_user(user_id) is not None:
+            await self.require_own_account(user_id)
         limit = self.cfg["user_bots.max_per_professor"]
         if not self.bot.authz.is_admin(owner) and await self.bot.store.count_user_bots(owner) >= limit:
             raise ValidationError("err.bot_quota", limit=limit)
+
+    async def require_own_account(self, user_id: UserID) -> None:
+        """The guard for every call that changes a professor bot's account (password reset,
+        login, reactivation, deactivation): only @bot.* accounts this plugin created itself.
+        An account in the bot. namespace made some other way (open token registration, Ketesa)
+        is refused, so the admin bot never takes over an account it didn't make. Admins are
+        told, because such an account shouldn't exist."""
+        if is_bot_account(user_id) and await self.bot.store.is_bot_account(user_id):
+            return
+        log.warning(f"Refusing to touch {user_id}: not an account this plugin created")
+        await self.bot.audit.post(t("msg.bot_account_foreign_audit", user_id=user_id))
+        raise ValidationError("err.bot_account_foreign", user_id=user_id)
 
     @staticmethod
     def suggest_plugin_id(owner: UserID, plugin_id: str) -> str:
@@ -322,12 +406,32 @@ class BotManager:
             await self.approve(request.id, requester)
             request.state = "approved"
         else:
+            deployed = await self.bot.store.deployed_package(owner, name) if action == "update" else None
             await self.bot.audit.post(t(
                 "msg.bot_request_audit", id=request.id, owner=owner, name=name, action=action,
                 plugin_id=info.plugin_id, version=info.version, sha256=info.sha256,
-                deps=", ".join(info.dependencies) or "-",
+                deps=", ".join(info.dependencies) or "-", review=format_review(info, data, deployed),
             ))
         return request
+
+    async def show(self, request_id: int) -> tuple[BotRequest, str, tuple[str, str] | None]:
+        """For `!admin bots show`: the request (with its package), every finding of the static
+        check, and for an update the diff against the running version as (file name, text)."""
+        request = await self.bot.store.get_bot_request(request_id)
+        if request is None:
+            raise NotFound("err.bot_request_unknown", id=request_id)
+        if not request.mbp:
+            raise NotFound("err.bot_package_gone", id=request_id)
+        meta = package_meta(request.mbp)
+        findings = review.analyze(request.mbp, meta).findings
+        deployed = await self.bot.store.deployed_package(request.owner, request.name)
+        changes, new_keys = None, None
+        if deployed and deployed[1] != request.mbp:
+            old_version, old_data = deployed
+            text = review.diff(old_data, request.mbp, f"v{old_version}", f"v{request.version}").text
+            changes = (f"{request.name}-v{old_version}-to-v{request.version}.diff", text)
+            new_keys = review.new_since(findings, review.analyze(old_data, package_meta(old_data)).findings)
+        return request, format_findings(findings, new_keys, locations=None), changes
 
     async def approve(self, request_id: int, admin: UserID) -> int:
         """Mark approved, submit a BOT_PROVISION job reporting to the owner's DM. Returns the job ID."""
@@ -368,7 +472,9 @@ class BotManager:
         except Exception:
             await self.bot.store.set_bot_request_state(request.id, "failed")
             raise
-        await self.bot.store.set_bot_request_state(request.id, "done", drop_package=True)
+        await self.bot.store.set_bot_request_state(request.id, "done")
+        # Keep the running version (for the diff of the next update), drop older ones.
+        await self.bot.store.drop_bot_packages(request.owner, request.name, keep=request.id)
 
     async def _provision_create(self, request: BotRequest) -> None:
         synapse = self.bot.synapse
@@ -376,12 +482,20 @@ class BotManager:
         password = secrets.token_urlsafe(32)
         displayname = f"{request.name} ({request.owner[1:].split(':', 1)[0]})"
         existing = await synapse.get_user(user_id)
-        if existing and existing.get("deactivated"):
-            await synapse.reactivate(user_id, password)
-        elif existing:
-            await synapse.reset_password(user_id, password, logout_devices=True)
-        else:
+        if existing is None:
+            await self.bot.store.add_bot_account(user_id)
             await synapse.create_user(user_id, password, displayname, user_type="bot")
+        else:
+            # A deleted bot (locked by !bot delete) or an interrupted run: the same account,
+            # with its secret storage, so the stored recovery key verifies the new device.
+            await self.require_own_account(user_id)
+            if existing.get("deactivated"):
+                await synapse.reactivate(user_id, password)
+            else:
+                if existing.get("locked"):
+                    await synapse.set_locked(user_id, False)
+                await synapse.reset_password(user_id, password, logout_devices=True)
+            await synapse.set_displayname(user_id, displayname)  # undo "... – removed"
         if existing and existing.get("user_type") != "bot":
             # reused account that isn't marked as a bot yet: without the type it can't send
             # messages until someone agrees to the terms (user_consent) in its name
@@ -404,6 +518,10 @@ class BotManager:
         ))
         room_id = await self.bot.ops.open_dm(request.owner)
         text = t("msg.bot_ready", name=request.name, user_id=user_id, plugin_id=request.plugin_id)
+        if existing is not None:
+            count, rooms = await self.room_list(user_id)
+            if count:
+                text += "\n\n" + t("msg.bot_back_in_rooms", count=count, rooms=rooms)
         if not verified:
             text += "\n\n" + t("msg.bot_unverified")
         await self.bot.ops.send(room_id, text)
@@ -453,19 +571,46 @@ class BotManager:
         room_id = await self.bot.ops.open_dm(request.owner)
         await self.bot.ops.send(room_id, t("msg.bot_updated", name=request.name, version=request.version))
 
-    async def delete_item(self, job: Job, item: JobItem) -> None:
-        """Delete instance and client, deactivate the account, delete the plugin if unused."""
+    async def delete_item(self, job: Job, item: JobItem) -> str:
+        """Stop and remove the bot in maubot (instance, client, plugin if unused), then retire its
+        account: rename it to '... – removed' (every room it is in sees that), log out all its
+        sessions and lock it. Not deactivated: that would purge its secret storage, and a bot
+        created again under the same name couldn't verify itself (plan §10). Its rooms stay;
+        returns the owner's text listing them ('' if none). Safe to re-run."""
         bot = await self.bot.store.get_user_bot(item.payload["owner"], item.payload["name"])
         if bot is None:
             raise NotFound("err.bot_unknown", name=item.payload["name"])
         await self.client.delete_instance(bot.instance_id)
         await self.client.delete_client(bot.user_id)
-        if await self.bot.synapse.user_exists(bot.user_id):
-            await self.bot.synapse.deactivate(bot.user_id)
+        rooms = ""
+        account = await self.bot.synapse.get_user(bot.user_id)
+        if account is not None and not account.get("deactivated"):
+            await self.require_own_account(bot.user_id)
+            synapse = self.bot.synapse
+            displayname = f"{bot.name} ({bot.owner[1:].split(':', 1)[0]})"
+            await synapse.set_displayname(bot.user_id, t("msg.bot_removed_displayname", name=displayname))
+            await synapse.delete_all_devices(bot.user_id)
+            await synapse.set_locked(bot.user_id, True)
+            count, listed = await self.room_list(bot.user_id)
+            if count:
+                rooms = t("msg.bot_still_in_rooms", count=count, rooms=listed)
         await self.bot.store.set_user_bot_state(bot.owner, bot.name, "deleted")
+        await self.bot.store.drop_bot_packages(bot.owner, bot.name)
         if not await self.bot.store.instances_using_plugin(bot.plugin_id):
             await self.client.delete_plugin(bot.plugin_id)
             await self.bot.store.delete_plugin_owner(bot.plugin_id)
+        return rooms
+
+    async def room_list(self, user_id: UserID) -> tuple[int, str]:
+        """(number of rooms the account is in, Markdown list with matrix.to links)."""
+        rooms = await self.bot.synapse.joined_rooms(user_id)
+        lines = []
+        for room_id in rooms[:MAX_LISTED_ROOMS]:
+            label = re.sub(r"[\[\]\\]", "", await self.bot.synapse.room_label(room_id)) or t("msg.unnamed_room")
+            lines.append(f"- [{label}](https://matrix.to/#/{room_id})")
+        if len(rooms) > MAX_LISTED_ROOMS:
+            lines.append(t("msg.more_rooms", count=len(rooms) - MAX_LISTED_ROOMS))
+        return len(rooms), "\n".join(lines)
 
     async def get(self, owner: UserID, name: str) -> UserBot:
         bot = await self.bot.store.get_user_bot(owner, name)

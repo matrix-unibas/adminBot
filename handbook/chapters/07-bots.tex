@@ -50,6 +50,11 @@ Three rules matter on this server:
     Plugins can't install Python packages. If \file{maubot.yaml} lists \cmd{dependencies}
     that the server doesn't have, the upload is refused, and the reply names them. Ask an
     admin if you need one.
+  \item[Only source code in the package]
+    The package may contain Python source, text files (YAML, HTML, \dots), images and fonts.
+    Compiled files (\file{.pyc}, \file{__pycache__}, \file{.so}) and archives are refused, so
+    that an admin can read everything in it. \cmd{mbc build} in a clean folder produces such
+    a package.
   \item[Raise the version for every update]
     An upload identical to the running one is refused (\enquote{already runs exactly this
     file}). Change \cmd{version:} and build again.
@@ -108,7 +113,7 @@ it is.
 \cmd{!bot stop <name>} & stops the bot; it keeps its rooms and settings \\
 \cmd{!bot start <name>} & starts it again \\
 \cmd{!bot update <name>} & then send a new \file{.mbp}: new version (may need approval again) \\
-\cmd{!bot delete <name>} & after \cmd{!confirm}: removes the bot and deactivates its account \\
+\cmd{!bot delete <name>} & after \cmd{!confirm}: removes the bot and locks its account; in its rooms it is renamed \enquote{\dots{} -- removed}, and the bot tells you which rooms those are. Created again under the same name, it comes back there \\
 \cmd{!bot delete all} & after \cmd{!confirm}: the same for all your bots \\
 \bottomrule
 \end{tabularx}
